@@ -1,4 +1,19 @@
+
+//conic state extrapolation function / gravity integrator
+//RUNPATH("0:/Libraries/cser_new").
+RUNPATH("0:/Libraries/cser_sg_simple").
+
+
+//global UPFG variables 
+
+GLOBAL upfgFinalizationTime IS 5.		//	When time-to-go gets below that, keep attitude stable and simply count down time to cutoff.
+GLOBAL upfgConvergenceTgo IS 1.	//	Maximum difference between consecutive UPFG T-go predictions that allow accepting the solution.
+GLOBAL upfgConvergenceVec IS 20.	//	Maximum angle between guidance vectors calculated by UPFG between stages that allow accepting the solution.
 	
+
+
+GLOBAL upfgInternal IS LEXICON().
+GLOBAL usc IS LEXICON().	
 	
 									//	UPFG HANDLING FUNCTIONS
 

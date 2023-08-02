@@ -221,6 +221,8 @@ declare function initialise_vehicle{
 	
 	vehicle:ADD("ign_t", 0).
 
+	SET control["roll_angle"] TO vehicle["roll"].
+
 	WHEN vehicle["stages"][vehiclestate["cur_stg"]]["Tstage"] <= 3 THEN {STAGING().}
 	
 	PRINT " INITIALISATION COMPLETE" AT (0,3).
@@ -240,95 +242,46 @@ declare function initialise_vehicle{
 
 
 
-
-
-//compute net thrust vector as thrust-weighted average of engines position 
-//relative to the ship raw frame
-//obtain the difference between fore vector and thrust vector.
-//then, given input reference "fore" and "up" vectors, rotate in that frame
-FUNCTION thrustrot {
-
-	PARAMETER ref_fore.
-	PARAMETER ref_up.
+//open-loop pitch profile for pre-UPFG
+FUNCTION pitch {
+	PARAMETER v.
+	PARAMETER v0.
+	PARAMETER scale.			 
 	
-	local norm is VCRS(ref_fore,ref_up).
+	LOCAL default IS 90.
 
-	LOCAL thrvec IS v(0,0,0).
-	local offs is v(0,0,0).
-	LOCAL thr is 0.
+	LOCAL out IS default.
 	
-	list ENGINES in all_eng.
-	FOR e IN all_eng {
-		IF e:ISTYPE("engine") {
-			IF e:IGNITION {
-				SET thr TO thr + (e:THRUST).
-				//set x to x + 1.
-				local v is -e:POSITION:NORMALIZED*e:THRUST.
-				set offs to offs + v.
-			}
-		}
-	}	
-	set thrvec to (offs/thr):NORMALIZED .
-	local ship_fore IS SHIP:FACING:VECTOR:NORMALIZED.
+	IF v>v0 {
+		
+		LOCAL p1 IS -0.0048.
+		LOCAL p2 IS 28.8.
+		LOCAL p3 IS 26300.
+		LOCAL q1 IS 3.923.
+		
+		LOCAL x IS v + 400.391 - v0.
 	
-	LOCAL newthrvec IS rodrigues(ref_fore,norm,-VANG(ship_fore,thrvec)):NORMALIZED*thrvec:MAG.
-	
-	RETURN ref_fore - newthrvec.
-}
-
-
-
-
-//	Returns a kOS direction for given aim vector, reference up vector and roll angle.
-//corrects for thrust offset
-FUNCTION aimAndRoll {
-	DECLARE PARAMETER aimVec.
-	DECLARE PARAMETER tgtRollAng.
-			 
-	LOCAL steerVec IS aimVec.
-	
-	LOCAL newRollAng IS tgtRollAng.
-	
-	IF ABS(tgtRollAng - control["roll_angle"])>5 {
-		local rollsign is SIGN( unfixangle( tgtRollAng - control["roll_angle"] ) ).
-		set control["roll_angle"] TO fixangle(control["roll_angle"] + rollsign*5).
-		SET newRollAng TO control["roll_angle"].
+		SET out TO (p1*x^2 + p2*x + p3)/(x + q1).
+		
+		//LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).
+		
+		SET out TO out*(1 + scale*(1 - out/default)).
+		
+		LOCAL bias IS out - surfacestate["vdir"].
+		
+		SET out TO out + 0.8*bias.
+		
+		
 	}
-	
-	
-	LOCAL topVec IS VXCL(steerVec,control["refvec"]):NORMALIZED.
-	SET topVec TO rodrigues(topVec, steerVec, newRollAng).
-	
-	//if the target aiming vector is too far away in yaw calculate an intermediate vector
-	//project the target vector in the ship vertical plane, rotate this towards the target by 3 degrees in the yaw plane
-	//LOCAL thrustvec IS thrust_vec().
-	//IF VANG(thrustvec,steerVec) > 5 {
-	//	LOCAL steerVecproj IS VXCL(SHIP:FACING:STARVECTOR,steerVec).
-	//	
-	//	LOCAL aimnorm Is VCRS(steerVec, steerVecproj).
-	//	
-	//	SET steerVec TO rodrigues(steerVecproj,aimnorm,-5).
-	//
-	//}
-	
-	LOCAL thrustCorr IS thrustrot(steerVec,topVec).
-	
-	LOCAL outdir IS LOOKDIRUP(steerVec + thrustCorr, topVec).
 
 
-	//clearvecdraws().
-	//arrow(topVec,"topVec",v(0,0,0),30,0.05).
-	//arrow(aimVec,"aimVec",v(0,0,0),30,0.05).
-	//arrow(steerVec,"steerVec",v(0,0,0),30,0.05).
-	//arrow(thrustCorr,"thrustCorr",v(0,0,0),30,0.05).
+	RETURN MAX(0,MIN(default,out)).
 
-	RETURN outdir.
 }
 
-//given current vehicle fore vector, computes where the thrust is pointing
-FUNCTION thrust_vec {
-	RETURN SHIP:FACING:VECTOR:NORMALIZED - thrustrot(SHIP:FACING:FOREVECTOR,SHIP:FACING:TOPVECTOR).
-}
+
+
+
 
 
 
@@ -531,32 +484,6 @@ FUNCTION glim_stg_time {
 
 
 
-//measures current total engine thrust an isp, as well as theoretical max engine thrust at this altitude
-
-FUNCTION get_thrust_isp {
-
-	LOCAL thr is 0.
-	LOCAL iisspp IS 0.
-	LOCAL maxthr is 0.			   
-	
-	list ENGINES in all_eng.
-	FOR e IN all_eng {
-		IF e:ISTYPE("engine") {
-			IF e:IGNITION {
-				SET thr TO thr + (e:THRUST * 1000).
-				SET iisspp TO iisspp + e:isp*(e:THRUST * 1000).
-				SET maxthr TO maxthr + (e:AVAILABLETHRUST*1000).									
-			}
-		}
-	}	
-	
-	vehiclestate["avg_thr"]:update(thr).
-	
-	RETURN LIST(vehiclestate["avg_thr"]:average(),iisspp,maxthr).
-}
-
-
-
 FUNCTION get_TWR {
 	RETURN vehiclestate["avg_thr"]:average()/(1000*SHIP:MASS*g0).
 }
@@ -677,8 +604,13 @@ FUNCTION getState {
 	local stg IS get_stage().
 	local stg_staginginfo IS stg["staging"]["type"].
 	
-	LOCAL x IS get_thrust_isp().
-	LOCAL avg_thrust is x[0].
+	LOCAL x IS get_current_thrust_isp().
+	
+	SET vehiclestate["thr_vec"] TO x[0].
+	
+	vehiclestate["avg_thr"]:update(vehiclestate["thr_vec"]:MAG).
+	
+	LOCAL avg_thrust is vehiclestate["avg_thr"]:average().
 	LOCAL avg_isp is x[1].
 
 	

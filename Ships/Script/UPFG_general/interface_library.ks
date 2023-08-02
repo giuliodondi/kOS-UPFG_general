@@ -17,7 +17,13 @@ FUNCTION addMessage {
 		P_vizMsg:REMOVE(rem_list[k]).
 	}
 	
-	P_vizMsg:INSERT(0,LEXICON("msg",msg,"ttl",tt + ttl)) .
+	P_vizMsg:INSERT(
+					0,
+					LEXICON(
+							"msg","T+" + sectotime(TIME:SECONDS - vehicle["ign_t"],"") + ": " + msg,
+							"ttl",tt + ttl
+					)
+	) .
 }
 
 FUNCTION message_Viz {
@@ -160,7 +166,9 @@ FUNCTION drawUI {
 //				requires flight sequence given by P_seq defined as GLOBAL and of type LIST
 //				capable of displaying custom messages, set up by addMessage as a GLOBAL STRING with a FLOAT time to live
 FUNCTION dataViz {
-
+	if (vehiclestate["ops_mode"] =0) {return.}
+	
+	log_telemetry().
 	
 	//PRINTING VARIABLES IN THE CORRECT PLACE
 	
@@ -276,36 +284,66 @@ FUNCTION dataViz {
 		
 
 	}
-
 	
 	//messages
 	message_Viz().
-	
 
+}
+
+
+
+FUNCTION prepare_telemetry {
+	if logdata=TRUE {	
+		GLOBAL loglex IS LEXICON(
+										"Time",0,
+										"Lat",0,
+										"Lng",0,
+										"Altitude",0,
+										"Dwnrg Dst",0,
+										"Stage",0,
+										"Mass",0,
+										"TWR",0,
+										"Throt",0,
+										"AZ(cmd)",0,
+										"HAOA",0,
+										"Pitch",0,
+										"VAOA",0,
+										"Surfvel",0,
+										"Orbvel",0,
+										"Vspeed",0,
+										"Incl",0,
+										"Ecctr",0
+		).
+		log_data(loglex,"./UPFG_general/LOGS/" + vehicle["name"] + "_log", TRUE).
+	}
+}
+
+FUNCTION log_telemetry {
 	if logdata=TRUE {
-	
+		LOCAL stg IS get_stage().
 		
 		//prepare list of values to log.
 		
 		SET loglex["Time"] TO TIME:SECONDS - vehicle["ign_t"].
+		SET loglex["Lat"] TO SHIP:GEOPOSITION:LAT.
+		SET loglex["Lng"] TO SHIP:GEOPOSITION:LNG.
 		SET loglex["Altitude"] TO SHIP:ALTITUDE/1000.
 		SET loglex["Dwnrg Dst"] TO downrangedist(launchpad,SHIP:GEOPOSITION ).
 		SET loglex["Stage"] TO vehiclestate["cur_stg"].
 		SET loglex["Mass"] TO stg["m_initial"].
-		SET loglex["TWR"] TO thrust[0]/(1000*SHIP:MASS*g0).
+		SET loglex["TWR"] TO get_TWR().
 		SET loglex["Throt"] TO stg["Throttle"]*100.
 		SET loglex["AZ(cmd)"] TO surfacestate["hdir"].
-		SET loglex["HAOA"] TO compass_for(v,SHIP:GEOPOSITION ) - compass_for(SHIP:FACING:VECTOR,SHIP:GEOPOSITION ).
+		SET loglex["HAOA"] TO get_yaw_prograde().
 		SET loglex["Pitch"] TO surfacestate["vdir"].
-		SET loglex["VAOA"] TO VANG(v, SHIP:UP:VECTOR) - VANG(SHIP:FACING:VECTOR, SHIP:UP:VECTOR).
+		SET loglex["VAOA"] TO get_pitch_prograde().
 		SET loglex["Surfvel"] TO SHIP:VELOCITY:SURFACE:MAG.
 		SET loglex["Orbvel"] TO SHIP:VELOCITY:ORBIT:MAG.
+		SET loglex["Vspeed"] TO SHIP:VERTICALSPEED.
 		SET loglex["Incl"] TO ORBIT:INCLINATION.
 		SET loglex["Ecctr"] TO ORBIT:ECCENTRICITY.
 
 		log_data(loglex).
 	}
-
 }
-
-
+ 

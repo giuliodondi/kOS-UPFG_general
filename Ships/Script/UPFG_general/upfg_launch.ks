@@ -1,18 +1,19 @@
 function launch{
 	CLEARSCREEN.
+	SET CONFIG:IPU TO 600.
+	SET TERMINAL:WIDTH TO 65.
+	SET TERMINAL:HEIGHT TO 59.
 	
-	GLOBAL IPUset IS 600.
-	GLOBAL terminalwidth IS 65.
-	GLOBAL terminalheight IS 59.
-		//	Required to run the script fast enough.
-	//GLOBAL upfgConvergenceDelay IS 10.		//	Transition from passive (atmospheric) to active guidance occurs that many seconds before "upfgActivation" (to give UPFG time to converge).
-	GLOBAL upfgFinalizationTime IS 5.		//	When time-to-go gets below that, keep attitude stable and simply count down time to cutoff.
-	GLOBAL upfgConvergenceTgo IS 1.	//	Maximum difference between consecutive UPFG T-go predictions that allow accepting the solution.
-	GLOBAL upfgConvergenceVec IS 15.	//	Maximum angle between guidance vectors calculated by UPFG between stages that allow accepting the solution.
-
-	SET TERMINAL:WIDTH TO terminalwidth.
-	SET TERMINAL:HEIGHT TO terminalheight.
-	SET CONFIG:IPU TO IPUset.	
+	//	Load libraries
+	RUNPATH("0:/Libraries/misc_library").	
+	RUNPATH("0:/Libraries/maths_library").	
+	RUNPATH("0:/Libraries/navigation_library").	
+	RUNPATH("0:/Libraries/vehicle_library").	
+	
+	RUNPATH("0:/UPFG_general/interface_library").
+	RUNPATH("0:/UPFG_general/targeting_library").
+	RUNPATH("0:/UPFG_general/upfg_library").
+	RUNPATH("0:/UPFG_general/vehicle_library").
 	
 	//	Load vessel file
 	IF (vesselfilename:ENDSWITH(".ks")=TRUE) {
@@ -20,49 +21,13 @@ function launch{
 	}
 	RUNPATH("./VESSELS/" + vesselfilename + ".ks").
 	
-	PRINT " INITIALISING GLOBAL VARIABLES" AT (0,1).
-	
-	//	Load libraries
-	RUNPATH("0:/Libraries/misc_library").	
-	RUNPATH("0:/Libraries/maths_library").	
-	RUNPATH("0:/Libraries/navigation_library").	
-	
-	RUNPATH("interface_library").
-	RUNPATH("targeting_library").
-	RUNPATH("vehicle_library").
-	
-	RUNPATH("upfg_library").	
-	//RUNPATH("upfg__cser_new").	
-	RUNPATH("upfg__cser_sg_simple").	
-	//RUNPATH("upfg__cser_rk3_simple").	
-	
-	if logdata=TRUE {	
-		GLOBAL loglex IS LEXICON(
-										"Time",0,
-										"Altitude",0,
-										"Dwnrg Dst",0,
-										"Stage",0,
-										"Mass",0,
-										"TWR",0,
-										"Throt",0,
-										"AZ(cmd)",0,
-										"HAOA",0,
-										"Pitch",0,
-										"VAOA",0,
-										"Surfvel",0,
-										"Orbvel",0,
-										"Incl",0,
-										"Ecctr",0
-		).
-		log_data(loglex,"./LOGS/" + vesselfilename + "_log").
-	}
-	
 	wait until ship:unpacked and ship:loaded.
-	
-		
 	
 	initialise_vehicle().
 	prepare_launch().
+	
+	prepare_telemetry().
+	
 	countdown().
 	open_loop_ascent().
 	closed_loop_ascent().

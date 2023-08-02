@@ -1039,58 +1039,7 @@ FUNCTION prepare_launch {
 	PRINT " COMPLETE. STARTING COUNTDOWN." AT (0,25).	
 	
 }	
-					   
 
-
-							//VEHICLE CONTROL FUNCTIONS 
-							
-
-//open-loop pitch profile for pre-UPFG
-FUNCTION pitch {
-	PARAMETER v.
-	PARAMETER v0.
-	PARAMETER scale.			 
-	
-	LOCAL default IS 90.
-
-	LOCAL out IS default.
-	
-	IF v>v0 {
-		
-		LOCAL p1 IS -0.0048.
-		LOCAL p2 IS 28.8.
-		LOCAL p3 IS 26300.
-		LOCAL q1 IS 3.923.
-		
-		LOCAL x IS v + 400.391 - v0.
-	
-		SET out TO (p1*x^2 + p2*x + p3)/(x + q1).
-		
-		//LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).
-		
-		SET out TO out*(1 + scale*(1 - out/default)).
-		
-		LOCAL bias IS out - surfacestate["vdir"].
-		
-		SET out TO out + 0.8*bias.
-		
-		
-	}
-
-
-	RETURN MAX(0,MIN(default,out)).
-
-}
-
-
-
-
-
-
-
-	
-	
-	
 	
 	
 	
