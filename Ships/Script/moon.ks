@@ -29,11 +29,10 @@ GLOBAL target_orbit IS LEXICON (
 
 ) . 
 
-GLOBAL pitchheading is 199.	//heading for pitchover manoeuvre
-GLOBAL pitchover is 1.2.//0	.	//angle to pitch over by.
+GLOBAL pitchheading is 180.	//heading for pitchover manoeuvre
+GLOBAL pitchover is 1	.	//angle to pitch over by.
 
 GLOBAL logdata Is true.
 
-//CD("0:/UPFG").
-CD("0:/UPFG_latest").
-run upfg_launch.
+RUNPATH("0:/UPFG_general/src/upfg_launch").
+

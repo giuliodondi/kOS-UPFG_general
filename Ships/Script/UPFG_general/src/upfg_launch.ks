@@ -10,10 +10,10 @@ function launch{
 	RUNPATH("0:/Libraries/navigation_library").	
 	RUNPATH("0:/Libraries/vehicle_library").	
 	
-	RUNPATH("0:/UPFG_general/interface_library").
-	RUNPATH("0:/UPFG_general/targeting_library").
-	RUNPATH("0:/UPFG_general/upfg_library").
-	RUNPATH("0:/UPFG_general/vehicle_library").
+	RUNPATH("0:/UPFG_general/src/interface_library").
+	RUNPATH("0:/UPFG_general/src/targeting_library").
+	RUNPATH("0:/UPFG_general/src/upfg_library").
+	RUNPATH("0:/UPFG_general/src/vehicle_library").
 	
 	//	Load vessel file
 	IF (vesselfilename:ENDSWITH(".ks")=TRUE) {
