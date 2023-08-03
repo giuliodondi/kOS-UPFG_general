@@ -67,6 +67,8 @@ declare function countdown{
 
 
 declare function open_loop_ascent{
+
+	SET STEERINGMANAGER:ROLLTS TO 5.
 	
 	SET vehiclestate["ops_mode"] TO 1.
 	
