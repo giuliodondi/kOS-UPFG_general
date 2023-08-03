@@ -1,3 +1,8 @@
+GLOBAL terminalwidth IS 65.
+GLOBAL terminalheight IS 59.
+
+SET TERMINAL:WIDTH TO terminalwidth.
+SET TERMINAL:HEIGHT TO terminalheight.
 
 FUNCTION addMessage {
 	DECLARE PARAMETER msg.

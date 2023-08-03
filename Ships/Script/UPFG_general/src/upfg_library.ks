@@ -1,3 +1,5 @@
+SET CONFIG:IPU TO 600.
+
 
 //conic state extrapolation function / gravity integrator
 //RUNPATH("0:/Libraries/cser_new").

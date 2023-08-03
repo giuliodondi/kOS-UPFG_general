@@ -1,8 +1,5 @@
 function launch{
 	CLEARSCREEN.
-	SET CONFIG:IPU TO 600.
-	SET TERMINAL:WIDTH TO 65.
-	SET TERMINAL:HEIGHT TO 59.
 	
 	//	Load libraries
 	RUNPATH("0:/Libraries/misc_library").	
