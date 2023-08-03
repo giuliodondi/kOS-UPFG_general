@@ -194,8 +194,8 @@ FUNCTION upfg {
 	
 
 	LOCAL dt IS t - previous["time"].
-	LOCAL v IS orbitstate["velocity"].
-	LOCAL vgo IS previous["vgo"] - (v - previous["v"]).
+	LOCAL v_ IS orbitstate["velocity"].
+	LOCAL vgo IS previous["vgo"] - (v_ - previous["v"]).
 	LOCAL tgo IS previous["tgo"].
 	LOCAL lambda IS previous["lambda"].
 	LOCAL lambdadot IS previous["lambdadot"].
@@ -206,13 +206,13 @@ FUNCTION upfg {
 		SET previous["lambda"] TO lambda.
 		SET previous["tgo"] TO tgo - dt.
 		SET previous["time"] TO t.
-		SET previous["v"] TO v.
+		SET previous["v"] TO v_.
 		SET previous["steering"] TO compute_iF(t - previous["t_lambda"],lambda,lambdadot).
 		RETURN LIST(previous,tgt_orb).
 	}
 	
 	
-	LOCAL r IS orbitstate["radius"].
+	LOCAL r_ IS orbitstate["radius"].
 	LOCAL cser IS previous["cser"].
 	LOCAL rd IS previous["rd"].
 	LOCAL rbias IS previous["rbias"].
@@ -301,12 +301,12 @@ FUNCTION upfg {
 	SET tgo TO tgoi[n-1].
 	
 	//	4
-	SET L TO 0.
-	LOCAL J IS 0.
-	LOCAL S IS 0.
-	LOCAL Q IS 0.
-	LOCAL H IS 0.
-	LOCAL P IS 0.
+	SET L_ TO 0.
+	LOCAL J_ IS 0.
+	LOCAL S_ IS 0.
+	LOCAL Q_ IS 0.
+	LOCAL H_ IS 0.
+	LOCAL P_ IS 0.
 	LOCAL Ji IS LIST().
 	LOCAL Si IS LIST().
 	LOCAL Qi IS LIST().
@@ -330,18 +330,18 @@ FUNCTION upfg {
 		}
 		
 		SET Ji[i] TO Ji[i] + Li[i]*tgoi1.
-		SET Si[i] TO Si[i] + L*tb[i].
-		SET Qi[i] TO Qi[i] + J*tb[i].
-		SET Pi[i] TO Pi[i] + H*tb[i].
+		SET Si[i] TO Si[i] + L_*tb[i].
+		SET Qi[i] TO Qi[i] + J_*tb[i].
+		SET Pi[i] TO Pi[i] + H_*tb[i].
 		
-		SET L TO L+Li[i].
-		SET J TO J+Ji[i].
-		SET S TO S+Si[i].
-		SET Q TO Q+Qi[i].
-		SET P TO P+Pi[i].
-		SET H TO J*tgoi[i] - Q.
+		SET L_ TO L_ + Li[i].
+		SET J_ TO J_ + Ji[i].
+		SET S_ TO S_ + Si[i].
+		SET Q_ TO Q_ + Qi[i].
+		SET P_ TO P_ + Pi[i].
+		SET H_ TO J_ * tgoi[i] - Q.
 	}
-	LOCAL K IS J/L.
+	LOCAL K_ IS J_/L_.
 	
 	
 	//	5
@@ -350,30 +350,30 @@ FUNCTION upfg {
 		SET rgrav TO (tgo/previous["tgo"])^2 * rgrav.
 	}
 	
-	LOCAL rgo IS rd - (r + v*tgo + rgrav).
+	LOCAL rgo IS rd - (r_ + v_*tgo + rgrav).
 	LOCAL iz IS VCRS(rd,iy):NORMALIZED.
 	LOCAL rgoxy IS rgo - VDOT(iz,rgo)*iz.
 	LOCAL rgoz IS (S - VDOT(lambda,rgoxy)) / VDOT(lambda,iz).
 	SET rgo TO rgoxy + rgoz*iz + rbias.
-	LOCAL lambdade IS Q - S*K.
+	LOCAL lambdade IS Q_ - S_*K_.
 	IF NOT t40flag {
 		SET lambdadot TO (rgo - S*lambda) / lambdade.
 	}
-	LOCAL iF_ IS compute_iF(-K,lambda,lambdadot).
+	LOCAL iF_ IS compute_iF(-K_,lambda,lambdadot).
 	LOCAL phi IS VANG(iF_,lambda)*CONSTANT:DEGTORAD.
-	LOCAL phidot IS -phi/K.
-	LOCAL vthrust IS (L - 0.5*L*phi^2 - J*phi*phidot - 0.5*H*phidot^2).
-	SET vthrust TO vthrust*lambda - (L*phi + J*phidot)*lambdadot:NORMALIZED.
-	LOCAL rthrust IS S - 0.5*S*phi^2 - Q*phi*phidot - 0.5*P*phidot^2.
-	SET rthrust TO rthrust*lambda - (S*phi + Q*phidot)*lambdadot:NORMALIZED.
+	LOCAL phidot IS -phi/K_.
+	LOCAL vthrust IS (L_ - 0.5*L_*phi^2 - J_*phi*phidot - 0.5*H_*phidot^2).
+	SET vthrust TO vthrust*lambda - (L_*phi + J_*phidot)*lambdadot:NORMALIZED.
+	LOCAL rthrust IS S_ - 0.5*S_*phi^2 - Q_*phi*phidot - 0.5*P_*phidot^2.
+	SET rthrust TO rthrust*lambda - (S_*phi + Q_*phidot)*lambdadot:NORMALIZED.
 	SET vbias TO vgo - vthrust.
 	SET rbias TO rgo - rthrust.
 	
 	
 	
 	//	7
-	LOCAL rc1 IS r - 0.1*rthrust - (tgo/30)*vthrust.
-	LOCAL vc1 IS v + 1.2*rthrust/tgo - 0.1*vthrust.
+	LOCAL rc1 IS r_ - 0.1*rthrust - (tgo/30)*vthrust.
+	LOCAL vc1 IS v_ + 1.2*rthrust/tgo - 0.1*vthrust.
 	LOCAL pack IS cse(rc1, vc1, tgo, cser).
 	SET cser TO pack[2].
 	SET rgrav TO pack[0] - rc1 - vc1*tgo.
@@ -381,27 +381,27 @@ FUNCTION upfg {
 	
 	
 	//	8
-	LOCAL rp IS r + v*tgo + rgrav + rthrust.
+	LOCAL rp IS r_ + v_*tgo + rgrav + rthrust.
 	
 	IF NOT t40flag {SET rp TO VXCL(iy,rp).}
 	LOCAL ix IS rp:NORMALIZED.
 	SET iz TO VCRS(ix,iy):NORMALIZED.
 	
-	LOCAL eta IS 0.
+	LOCAL eta_ IS 0.
  
 	IF tgt_orb["mode"]=2 {								
 		//recompute cutoff true anomaly
-		SET  eta TO signed_angle(tgt_orb["perivec"],rp,-iy,1).	
+		SET eta_ TO signed_angle(tgt_orb["perivec"],rp,-iy,1).	
 	}
 	 
-	SET tgt_orb TO cutoff_params(tgt_orb,rd,eta).
+	SET tgt_orb TO cutoff_params(tgt_orb,rd,eta_).
 	SET rd TO tgt_orb["radius"]:MAG*ix.	
 	
 	
 	LOCAL vd IS rodrigues(iz,iy, tgt_orb["angle"]):NORMALIZED*tgt_orb["velocity"].	
 	
 
-	SET vgo TO vd - v - vgrav + vbias.
+	SET vgo TO vd - v_ - vgrav + vbias.
 	
 	//	RETURN - build new internal state instead of overwriting the old one
 	LOCAL current IS LEXICON(

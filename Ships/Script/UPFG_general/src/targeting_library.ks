@@ -17,11 +17,11 @@ FUNCTION update_navigation {
 	
 	//measure position and orbit parameters
 	
-	IF vehiclestate["ops_mode"] >1 {set v to SHIP:PROGRADE:VECTOR.}
-	ELSE {set v to SHIP:SRFPROGRADE:VECTOR.}
+	IF vehiclestate["ops_mode"] >1 {set vel to SHIP:PROGRADE:VECTOR.}
+	ELSE {set vel to SHIP:SRFPROGRADE:VECTOR.}
 	
-	SET surfacestate["hdir"] TO compass_for(v,SHIP:GEOPOSITION ).
-	SET surfacestate["vdir"] TO 90 - VANG(v, SHIP:UP:VECTOR).
+	SET surfacestate["hdir"] TO compass_for(vel,SHIP:GEOPOSITION ).
+	SET surfacestate["vdir"] TO 90 - VANG(vel, SHIP:UP:VECTOR).
 	SET surfacestate["pitch"] TO 90 - VANG(SHIP:FACING:VECTOR, SHIP:UP:VECTOR).	
 	SET surfacestate["az"] TO compass_for(SHIP:FACING:VECTOR,SHIP:GEOPOSITION ).
 	SET surfacestate["alt"] TO SHIP:ALTITUDE.
@@ -81,15 +81,15 @@ FUNCTION cutoff_params {
 	
 		local x is 1 + target["ecc"]*COS(etaa).
 		
-		local r is cutoff_r:MAG.
+		local r_ is cutoff_r:MAG.
 		
 		IF mode=2{ //given sma, ecc and eta, compute r
-			set r to target["SMA"]*(1-target["ecc"]^2)/x.	
+			set r_ to target["SMA"]*(1-target["ecc"]^2)/x.	
 		}
 		ELSE IF mode=1 {	//given sma, ecc and r, compute eta
 			IF target["ecc"]=0 {set etaa to  0.}
 			ELSE {		
-				set etaa to (target["SMA"]*(1-target["ecc"]^2)/r - 1)/target["ecc"].
+				set etaa to (target["SMA"]*(1-target["ecc"]^2)/r_ - 1)/target["ecc"].
 				set etaa to ARCCOS(etaa).
 			}
 			set x to 1 + target["ecc"]*COS(etaa).
@@ -97,16 +97,16 @@ FUNCTION cutoff_params {
 		
 		
 		//ELSE IF mode=1 {	//given r, ecc and eta, compute sma
-		//	SET target["SMA"] TO x*r/(1-target["ecc"]^2).
+		//	SET target["SMA"] TO x*r_/(1-target["ecc"]^2).
 		//}
 	
-		local v is SQRT(SHIP:BODY:MU * (2/r - 1/target["SMA"])).
+		local v_ is SQRT(SHIP:BODY:MU * (2/r_ - 1/target["SMA"])).
 			
 		local phi is target["ecc"]*sin(etaa)/x.
 		set phi to ARCTAN(phi).
 		
-		set target["radius"] to cutoff_r:NORMALIZED*r.
-		set target["velocity"] to v.
+		set target["radius"] to cutoff_r:NORMALIZED*r_.
+		set target["velocity"] to v_.
 		set target["angle"] to phi.
 		set target["eta"] to etaa.
 	}
@@ -161,13 +161,13 @@ declare function moon_shot {
 		
 		LOCAL a IS get_a_cBB(k,beta).
 		
-		local r IS rad2deg((2400000/SHIP:BODY:RADIUS)).
-		SET a TO a + get_a_bc(d,r).
+		local r_ IS rad2deg((2400000/SHIP:BODY:RADIUS)).
+		SET a TO a + get_a_bc(d,r_).
 		
 		local x IS get_a_cBB(a,beta) - k.
 		
-		local alpha IS ARCCOS( limitarg(COS(r)/COS(x)) ).
-		SET alpha TO ARCSIN(limitarg(SIN(alpha)/SIN(r))).
+		local alpha IS ARCCOS( limitarg(COS(r_)/COS(x)) ).
+		SET alpha TO ARCSIN(limitarg(SIN(alpha)/SIN(r_))).
 		
 		
 		local theta IS 90.
@@ -183,7 +183,7 @@ declare function moon_shot {
 		SEt out TO rodrigues(out,launchvec:NORMALIZED,theta).
 		
 		
-		SET out TO rodrigues(launchvec,out,r).
+		SET out TO rodrigues(launchvec,out,r_).
 	
 		RETURN out.
 	}

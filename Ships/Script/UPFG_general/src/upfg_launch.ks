@@ -19,7 +19,7 @@ function launch{
 	IF (vesselfilename:ENDSWITH(".ks")=TRUE) {
 		SET vesselfilename TO vesselfilename:REMOVE( vesselfilename:FIND(".ks") ,3 ).
 	}
-	RUNPATH("./VESSELS/" + vesselfilename + ".ks").
+	RUNPATH("0:/UPFG_general/VESSELS/" + vesselfilename + ".ks").
 	
 	wait until ship:unpacked and ship:loaded.
 	

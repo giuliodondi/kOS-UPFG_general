@@ -244,7 +244,7 @@ declare function initialise_vehicle{
 
 //open-loop pitch profile for pre-UPFG
 FUNCTION pitch {
-	PARAMETER v.
+	PARAMETER v_.
 	PARAMETER v0.
 	PARAMETER scale.			 
 	
@@ -252,14 +252,14 @@ FUNCTION pitch {
 
 	LOCAL out IS default.
 	
-	IF v>v0 {
+	IF v_>v0 {
 		
 		LOCAL p1 IS -0.0048.
 		LOCAL p2 IS 28.8.
 		LOCAL p3 IS 26300.
 		LOCAL q1 IS 3.923.
 		
-		LOCAL x IS v + 400.391 - v0.
+		LOCAL x IS v_ + 400.391 - v0.
 	
 		SET out TO (p1*x^2 + p2*x + p3)/(x + q1).
 		
@@ -797,21 +797,21 @@ FUNCTION staging_reset {
 //small function that, given time, computes how much burned mass that equates to
 //used for pre-convergence of upfg
 FUNCTION decrease_mass {
-	parameter stage.
-	parameter timespan.
+	parameter stg.
+	parameter dt.
 	
-	local deltam is 0.
+	local dm is 0.
 	
-	IF stage["mode"]=1 {
-		set deltam to timespan*stage["engines"]["flow"].
+	IF stg["mode"]=1 {
+		set dm to dt*stg["engines"]["flow"].
 	}
-	ELSE IF stage["mode"]=2 {
-		set deltam to stage["m_initial"]*(1 - CONSTANT:E^(-stage["glim"]*timespan/stage["engines"]["isp"])).
+	ELSE IF stg["mode"]=2 {
+		set dm to stg["m_initial"]*(1 - CONSTANT:E^(-stg["glim"]*dt/stg["engines"]["isp"])).
 	}
 	
-	set stage["m_initial"] to stage["m_initial"] - deltam.
-	set stage["m_burn"] to stage["m_burn"] - deltam.
-	SET stage["Tstage"] TO stage["Tstage"] - timespan.
+	set stg["m_initial"] to stg["m_initial"] - dm.
+	set stg["m_burn"] to stg["m_burn"] - dm.
+	SET stg["Tstage"] TO stg["Tstage"] - dt.
 } 
 	
 
