@@ -292,19 +292,20 @@ FUNCTION throttleControl {
 	local stg IS get_stage().
 	local throtval is stg["Throttle"].
 	
+	IF stg["mode"] = 2   {
+		SET throtval TO stg["throt_mult"]*SHIP:MASS*1000.
+		SET usc["lastthrot"] TO throtval.
+	}
+	
+	set stg["Throttle"] to throtval.
+
 	LOCAL minthrot IS 0.
 	IF stg:HASKEY("minThrottle") {
 		SET minthrot TO stg["minThrottle"].
 	}
 	
-	IF stg["mode"] = 2   {
-		SET throtval TO stg["throt_mult"]*SHIP:MASS*1000.
-		SET usc["lastthrot"] TO throtval.
-	}
-
-	RETURN CLAMP((throtval - minthrot)/(1 - minthrot),0.005,1).
+	RETURN throtteValueConverter(throtval, minthrot).
 }
-
 
 
 //control individually the throttle value of engines 

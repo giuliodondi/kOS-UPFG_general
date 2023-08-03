@@ -40,7 +40,8 @@ declare function countdown{
 	local line is 30.
 	print " COUNTDOWN:" AT (0,line).
 	
-	
+	//this sets the pilot throttle command to some value so that it's not zero if the program is aborted
+	SET SHIP:CONTROL:PILOTMAINTHROTTLE TO vehicle["stages"][vehiclestate["cur_stg"]]["Throttle"].
 	
 	local TT IS TIME:SECONDS + 10 - vehicle["preburn"].
 	WHEN  TIME:SECONDS>=TT  THEN {
@@ -67,12 +68,16 @@ declare function countdown{
 
 declare function open_loop_ascent{
 	
-	drawUI().
-	addMessage("LIFT-OFF!").
+	SET vehiclestate["ops_mode"] TO 1.
 	
+	drawUI().
 	
 	get_mass_bias().
 	getState().
+	
+	WHEN SHIP:VERTICALSPEED > 1 THEN {
+		addMessage("LIFT-OFF!").
+	}
 	
 	//leave this here for debugging
 	//until false {print vehicle["stages"].}
@@ -106,13 +111,13 @@ declare function open_loop_ascent{
 	SET control["refvec"] TO HEADING(control["launch_az"] + 180, 0):VECTOR.
 	LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).																				   
 	
-	SET vehiclestate["ops_mode"] TO 1.
 	getState().
 	
 	WHEN SHIP:VERTICALSPEED > 40 THEN {
 		addMessage("BEGINNING ROLL PROGRAM").	
 		SET steer_flag TO true.
 	}
+
 	
 	LOCAL targetspeed IS 85 + ((45 - 90)/(1.5-1))*(vehiclestate["avg_thr"]:average()/(g0*vehicle["stages"][vehiclestate["cur_stg"]]["m_initial"]) - 1).	
 	
@@ -142,7 +147,7 @@ declare function open_loop_ascent{
 
 		
 		IF steer_flag AND (NOT vehiclestate["staging_in_progress"]) { 
-			set control["steerdir"] TO aimAndRoll(aimVec,vehicle["roll"]). 
+			set control["steerdir"] TO aimAndRoll(aimVec, control["refvec"], control["roll_angle"]). 
 		} ELSE {
 			SET control["steerdir"] TO "kill".
 		}
@@ -155,7 +160,8 @@ declare function open_loop_ascent{
 
 
 declare function closed_loop_ascent{
-	
+	SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO 180.
+	SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.2.
 	
 	SET vehiclestate["ops_mode"] TO 2.
 	IF HASTARGET = TRUE AND (TARGET:BODY = SHIP:BODY) {
@@ -163,7 +169,7 @@ declare function closed_loop_ascent{
 		SET target_orbit TO tgt_j2_timefor(target_orbit,300).
 	}													 
 	SET control["refvec"] TO -SHIP:ORBIT:BODY:POSITION:NORMALIZED.
-	SET control["steerdir"] TO aimAndRoll(SHIP:FACING:FOREVECTOR:NORMALIZED,vehicle["roll"]).	
+	
 	addMessage("RUNNING UPFG ALGORITHM").
 	drawUI().
 	getState().
@@ -214,7 +220,8 @@ declare function closed_loop_ascent{
 		SET upfgInternal TO upfg_wrapper(upfgInternal).
 		
 		IF NOT vehiclestate["staging_in_progress"] {
-			SET control["steerdir"] TO aimAndRoll(vecYZ(usc["lastvec"]):NORMALIZED,vehicle["roll"]).									
+			SET control["steerdir"] TO aimAndRoll(vecYZ(usc["lastvec"]):NORMALIZED, control["refvec"], control["roll_angle"]).		
+			
 		} ELSE {
 			SET control["steerdir"] TO "kill".
 		}		
