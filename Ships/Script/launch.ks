@@ -2,13 +2,13 @@
 
 //Launch Settings
 
-GLOBAL vesselfilename is "SLS block 1.ks".     //this is the name of the vessel file to load
+GLOBAL vesselfilename is "Saturn V - Lunar".     //this is the name of the vessel file to load
 
 GLOBAL target_orbit IS LEXICON (	
-								"periapsis",250,
-								"apoapsis",35,
+								"periapsis",195,
+								"apoapsis",195,
 								"inclination",29,
-								"Cutoff Altitude",120,
+								"Cutoff Altitude",195,
 								"end",0								//don't remove this
 ).
 
