@@ -341,7 +341,7 @@ FUNCTION upfg {
 		SET S_ TO S_ + Si[i].
 		SET Q_ TO Q_ + Qi[i].
 		SET P_ TO P_ + Pi[i].
-		SET H_ TO J_ * tgoi[i] - Q.
+		SET H_ TO J_ * tgoi[i] - Q_.
 	}
 	LOCAL K_ IS J_/L_.
 	
@@ -359,7 +359,7 @@ FUNCTION upfg {
 	SET rgo TO rgoxy + rgoz*iz + rbias.
 	LOCAL lambdade IS Q_ - S_*K_.
 	IF NOT t40flag {
-		SET lambdadot TO (rgo - S*lambda) / lambdade.
+		SET lambdadot TO (rgo - S_*lambda) / lambdade.
 	}
 	LOCAL iF_ IS compute_iF(-K_,lambda,lambdadot).
 	LOCAL phi IS VANG(iF_,lambda)*CONSTANT:DEGTORAD.
