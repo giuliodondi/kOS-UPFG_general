@@ -264,7 +264,7 @@ FUNCTION upfg {
 	
 	//	3
 	IF SM[0]=1 {
-		SET aT[0] TO fT[0]*Kk / m.
+		SET aT[0] TO fT[0] / m.
 	} ELSE IF SM[0]=2 {
 		SET aT[0] TO aL[0].
 	}
@@ -355,7 +355,7 @@ FUNCTION upfg {
 	LOCAL rgo IS rd - (r_ + v_*tgo + rgrav).
 	LOCAL iz IS VCRS(rd,iy):NORMALIZED.
 	LOCAL rgoxy IS rgo - VDOT(iz,rgo)*iz.
-	LOCAL rgoz IS (S - VDOT(lambda,rgoxy)) / VDOT(lambda,iz).
+	LOCAL rgoz IS (S_ - VDOT(lambda,rgoxy)) / VDOT(lambda,iz).
 	SET rgo TO rgoxy + rgoz*iz + rbias.
 	LOCAL lambdade IS Q_ - S_*K_.
 	IF NOT t40flag {
@@ -413,11 +413,11 @@ FUNCTION upfg {
 		"rgrav", rgrav,
 		"time", t,
 		"tgo", tgo,
-		"v", v,
+		"v", v_,
 		"vgo", vgo,
 		"lambda", lambda,
 		"lambdadot", lambdadot,
-		"t_lambda",(t + K),
+		"t_lambda",(t + K_),
 		"steering",iF_,
 		"throtset",Kk
 	).
