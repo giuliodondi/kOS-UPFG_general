@@ -111,7 +111,7 @@ declare function open_loop_ascent{
 	local steer_flag IS false.
 	
 	SET control["refvec"] TO HEADING(control["launch_az"] + 180, 0):VECTOR.
-	LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).																				   
+	LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).																			   
 	
 	getState().
 	
@@ -197,24 +197,15 @@ declare function closed_loop_ascent{
 		} 
 		ELSE {																					  
 			IF (usc["conv"]=1 AND (upfgInternal["tgo"] < upfgFinalizationTime AND SHIP:VELOCITY:ORBIT:MAG>= 0.9*target_orbit["velocity"])) OR (SHIP:VELOCITY:ORBIT:MAG>= 0.995*target_orbit["velocity"]) {
-				IF vehiclestate["ops_mode"]=2 {
-					SET vehiclestate["ops_mode"] TO 3.
-					SET usc["terminal"] TO TRUE.
-					addMessage("WAITING FOR MECO").
-					WHEN SHIP:VELOCITY:ORBIT:MAG >= target_orbit["velocity"] THEN {
-						LOCK STEERING TO "kill".
-						LOCK THROTTLE to 0.
-						LIST ENGINES IN Eng.
-						FOR E IN Eng {IF e:ISTYPE("engine") {E:SHUTDOWN.}}
-					}
-				}
+				addMessage("TERMINAL GUIDANCE").
+				BREAK.
 			}
 			
 			IF HASTARGET = TRUE AND (TARGET:BODY = SHIP:BODY) {
 				SET target_orbit TO tgt_j2_timefor(target_orbit,upfgInternal["tgo"]).
 			}															 
-			SET target_orbit["normal"] TO targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
-			SET target_orbit["perivec"] TO target_perivec().
+			//SET target_orbit["normal"] TO targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
+			//SET target_orbit["perivec"] TO target_perivec().
 		}
 		
 		getState().
@@ -235,9 +226,22 @@ declare function closed_loop_ascent{
 		WAIT 0.
 	}
 	
+	SET vehiclestate["ops_mode"] TO 3.
+	SET usc["terminal"] TO TRUE.
 	
 	//put terminal logic in its own block
-
+	addMessage("WAITING FOR MECO").
+	UNTIL FALSE {
+		getState().
+		IF (SHIP:VELOCITY:ORBIT:MAG >= target_orbit["velocity"]) {
+			LOCK STEERING TO "kill".
+			LOCK THROTTLE to 0.
+			SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.
+			LIST ENGINES IN Eng.
+			FOR E IN Eng {IF e:ISTYPE("engine") {E:SHUTDOWN.}}
+			BREAK.
+		}
+	}
 	
 	//just in case it hasn't been done previously
 	LOCK THROTTLE to 0.
