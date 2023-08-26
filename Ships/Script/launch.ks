@@ -2,19 +2,18 @@
 
 //Launch Settings
 
-GLOBAL vesselfilename is "Saturn V - Lunar".     //this is the name of the vessel file to load
+GLOBAL vesselfilename is "Saturn V".     //this is the name of the vessel file to load
+//GLOBAL vesselfilename is "Saturn IB".     //this is the name of the vessel file to load
 
 GLOBAL target_orbit IS LEXICON (	
-								"periapsis",195,
-								"apoapsis",195,
-								"inclination",29,
-								"Cutoff Altitude",195,
-								"end",0								//don't remove this
+								"periapsis",175,
+								"apoapsis",175,
+								"inclination",28.8
 ).
 
 GLOBAL pitchheading is 180.	//heading for pitchover manoeuvre
 GLOBAL pitchover is 1	.	//angle to pitch over by.
 
-GLOBAL logdata Is false.
+GLOBAL logdata Is true.
 
 RUNPATH("0:/UPFG_general/src/upfg_launch").
