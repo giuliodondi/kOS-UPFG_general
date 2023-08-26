@@ -9,7 +9,7 @@ RUNPATH("0:/Libraries/cser_sg_simple").
 //global UPFG variables 
 
 GLOBAL upfgFinalizationTime IS 5.		//	When time-to-go gets below that, keep attitude stable and simply count down time to cutoff.
-GLOBAL upfgConvergenceTgo IS 1.	//	Maximum difference between consecutive UPFG T-go predictions that allow accepting the solution.
+GLOBAL upfgConvergenceTgo IS 0.5.	//	Maximum difference between consecutive UPFG T-go predictions that allow accepting the solution.
 GLOBAL upfgConvergenceVec IS 20.	//	Maximum angle between guidance vectors calculated by UPFG between stages that allow accepting the solution.
 	
 
@@ -47,16 +47,15 @@ FUNCTION setupUPFG {
 		"cser", 4,
 		"rbias", V(0, 0, 0),
 		"rd", target_orbit["radius"],
+		"rpd", target_orbit["radius"],
 		"rgrav", rgrav,
-		"vgrav", 2*rgrav,
 		"time", surfacestate["MET"],
-		"tgo", 0,
+		"tgo", 100,
 		"v", curV,
 		"vgo", tgoV,
 		"lambda", V(1,0,0),
 		"lambdadot", V(0,0,0),
-		"T",0,
-		"K",surfacestate["MET"],
+		"t_lambda",surfacestate["MET"],
 		"steering",V(1,0,0),
 		"throtset",stg["Throttle"]
 	).
@@ -107,7 +106,12 @@ FUNCTION upfg_wrapper {
 	
 	SET upfgInternal["throtset"] TO usc["lastthrot"].
 	
-	LOCAL out IS upfg(currentIterationTime , vehicle["stages"]:SUBLIST(vehiclestate["cur_stg"],vehicle:LENGTH-vehiclestate["cur_stg"]) , target_orbit , upfgInternal , usc["itercount"]=0 , usc["terminal"] ).
+	LOCAL out IS upfg_regular(
+					currentIterationTime, 
+					vehicle["stages"]:SUBLIST(vehiclestate["cur_stg"],vehicle:LENGTH-vehiclestate["cur_stg"]) , 
+					target_orbit , 
+					upfgInternal
+	).
 	
 	LOCAL upfgOutput IS out[0].
 	SET target_orbit TO out[1].
@@ -173,48 +177,30 @@ FUNCTION resetUPFG {
 
 
 
+//		UPFG MAIN ROUTINE
 
-//	Unified Powered Flight Guidance
+FUNCTION upfg_regular {
 
-DECLARE FUNCTION compute_iF {
-	PARAMETER time_.
-	PARAMETER lambda.
-	PARAMETER lambdadot.
-	LOCAL out IS  lambda + lambdadot*time_.
-	RETURN out:NORMALIZED.
-}
-
-FUNCTION upfg {
-	
+	DECLARE FUNCTION compute_iF {
+		PARAMETER time_.
+		LOCAL out IS  lambda + lambdadot*time_.
+		RETURN out:NORMALIZED.
+	}
 
 	PARAMETER t.
 	PARAMETER vehicle.
 	PARAMETER tgt_orb.
 	PARAMETER previous.
-	PARAMETER _dummy.
-	PARAMETER terminalflag.
 	
 
 	LOCAL dt IS t - previous["time"].
-	LOCAL v_ IS orbitstate["velocity"].
-	LOCAL vgo IS previous["vgo"] - (v_ - previous["v"]).
+	LOCAL v_cur IS orbitstate["velocity"].
+	LOCAL vgo IS previous["vgo"] - (v_cur - previous["v"]).
 	LOCAL tgo IS previous["tgo"].
 	LOCAL lambda IS previous["lambda"].
 	LOCAL lambdadot IS previous["lambdadot"].
-	
-
-	IF terminalflag {
-		SET previous["vgo"] TO vgo.
-		SET previous["lambda"] TO lambda.
-		SET previous["tgo"] TO tgo - dt.
-		SET previous["time"] TO t.
-		SET previous["v"] TO v_.
-		SET previous["steering"] TO compute_iF(t - previous["t_lambda"],lambda,lambdadot).
-		RETURN LIST(previous,tgt_orb).
-	}
-	
-	
-	LOCAL r_ IS orbitstate["radius"].
+		
+	LOCAL r_cur IS orbitstate["radius"].
 	LOCAL cser IS previous["cser"].
 	LOCAL rd IS previous["rd"].
 	LOCAL rbias IS previous["rbias"].
@@ -232,11 +218,13 @@ FUNCTION upfg {
 	LOCAL n IS vehicle:LENGTH.
 	LOCAL SM IS LIST().
 	LOCAL aL IS LIST().
+	LOCAL md IS LIST().
 	LOCAL ve IS LIST().
 	LOCAL fT IS LIST().
 	LOCAL aT IS LIST().
 	LOCAL tu IS LIST().
 	LOCAL tb IS LIST().
+	LOCAL kklist IS LIST().
   
 	FROM { LOCAL i IS 0. } UNTIL i>=n STEP { SET i TO i+1. } DO {
 		SM:ADD(vehicle[i]["mode"]).
@@ -246,19 +234,17 @@ FUNCTION upfg {
 			aL:ADD(0).
 		}
 		fT:ADD(vehicle[i]["engines"]["thrust"]).
-		IF (i=0) {SET fT[i] TO fT[i]*Kk.}
+		md:ADD(vehicle[i]["engines"]["flow"]).
+		kklist:ADD(vehicle[i]["Throttle"]).
+		IF (i=0) {
+			SET kklist[i] TO Kk.	
+		}
+		SET fT[i] TO fT[i]*kklist[i].
+		SET md[i] TO md[i]*kklist[i].
 		ve:ADD(vehicle[i]["engines"]["isp"]*g0).
 		aT:ADD(fT[i] / vehicle[i]["m_initial"]).
 		tu:ADD(ve[i]/aT[i]).
 		tb:ADD(vehicle[i]["Tstage"]).
-		//for G-limited stages we pretend the throttle limit doesn't exist 
-		//i.e. we do the calculations pretending that the stage will be throttled down until depletion
-		//when the throttle limit is reached the stage will be converted elsewhere to a constant T depletion stage
-		//at the appropriate thrust level
-		//therefore for now we compute the burn time of the G-limited stage to depletion 
-		IF SM[i]=2 {
-			SET tb[i] TO (ve[i]/aL[i])*LN(1 + vehicle[i]["m_burn"]/vehicle[i]["m_final"]).
-		}
 	}
 	
 	
@@ -269,21 +255,28 @@ FUNCTION upfg {
 		SET aT[0] TO aL[0].
 	}
 	SET tu[0] TO ve[0] / aT[0].
-	LOCAL L IS 0.
-	LOCAL Li IS LIST().
 	
+	LOCAL Li IS LIST().
+	LOCAL Lsum IS 0.
 	FROM { LOCAL i IS 0. } UNTIL i>=n-1 STEP { SET i TO i+1. } DO {
 		IF SM[i]=1 {
 			Li:ADD( ve[i]*LN(tu[i]/(tu[i]-tb[i])) ).
 		} ELSE IF SM[i]=2 {
 			Li:ADD( aL[i]*tb[i] ).
 		} ELSE Li:ADD( 0 ).
-		SET L TO L + Li[i].
-		IF L>vgo:MAG {
-			RETURN upfg(t,vehicle:SUBLIST(0,vehicle:LENGTH-1), tgt_orb, previous,_dummy,terminalflag).
+		SET Lsum TO Lsum + Li[i].
+		
+		IF Lsum>vgo:MAG {
+			RETURN upfg_regular(
+				t,
+				vehicle:SUBLIST(0,vehicle:LENGTH-1),
+				tgt_orb,
+				previous
+			).
 		}
 	}
-	Li:ADD(vgo:MAG - L).
+	Li:ADD(vgo:MAG - Lsum).
+	
 	
 	LOCAL tgoi IS LIST().
 	FROM { LOCAL i IS 0. } UNTIL i>=n STEP { SET i TO i+1. } DO {
@@ -299,11 +292,10 @@ FUNCTION upfg {
 		}
 	}
 	
-	//LOCAL L1 IS Li[0].
 	SET tgo TO tgoi[n-1].
 	
 	//	4
-	SET L_ TO 0.
+	LOCAL L_ IS 0.
 	LOCAL J_ IS 0.
 	LOCAL S_ IS 0.
 	LOCAL Q_ IS 0.
@@ -336,12 +328,12 @@ FUNCTION upfg {
 		SET Qi[i] TO Qi[i] + J_*tb[i].
 		SET Pi[i] TO Pi[i] + H_*tb[i].
 		
-		SET L_ TO L_ + Li[i].
-		SET J_ TO J_ + Ji[i].
-		SET S_ TO S_ + Si[i].
-		SET Q_ TO Q_ + Qi[i].
-		SET P_ TO P_ + Pi[i].
-		SET H_ TO J_ * tgoi[i] - Q_.
+		SET L_ TO L_+Li[i].
+		SET J_ TO J_+Ji[i].
+		SET S_ TO S_+Si[i].
+		SET Q_ TO Q_+Qi[i].
+		SET P_ TO P_+Pi[i].
+		SET H_ TO J_*tgoi[i] - Q_.
 	}
 	LOCAL K_ IS J_/L_.
 	
@@ -352,16 +344,19 @@ FUNCTION upfg {
 		SET rgrav TO (tgo/previous["tgo"])^2 * rgrav.
 	}
 	
-	LOCAL rgo IS rd - (r_ + v_*tgo + rgrav).
+	LOCAL rgo IS rd - (r_cur + v_cur*tgo + rgrav).
 	LOCAL iz IS VCRS(rd,iy):NORMALIZED.
 	LOCAL rgoxy IS rgo - VDOT(iz,rgo)*iz.
 	LOCAL rgoz IS (S_ - VDOT(lambda,rgoxy)) / VDOT(lambda,iz).
 	SET rgo TO rgoxy + rgoz*iz + rbias.
 	LOCAL lambdade IS Q_ - S_*K_.
-	IF NOT t40flag {
+	
+	IF (NOT t40flag) {
 		SET lambdadot TO (rgo - S_*lambda) / lambdade.
 	}
-	LOCAL iF_ IS compute_iF(-K_,lambda,lambdadot).
+	
+	
+	LOCAL iF_ IS compute_iF(-K_).
 	LOCAL phi IS VANG(iF_,lambda)*CONSTANT:DEGTORAD.
 	LOCAL phidot IS -phi/K_.
 	LOCAL vthrust IS (L_ - 0.5*L_*phi^2 - J_*phi*phidot - 0.5*H_*phidot^2).
@@ -372,10 +367,11 @@ FUNCTION upfg {
 	SET rbias TO rgo - rthrust.
 	
 	
-	
 	//	7
-	LOCAL rc1 IS r_ - 0.1*rthrust - (tgo/30)*vthrust.
-	LOCAL vc1 IS v_ + 1.2*rthrust/tgo - 0.1*vthrust.
+	
+	
+	LOCAL rc1 IS r_cur - 0.1*rthrust - (tgo/30)*vthrust.
+	LOCAL vc1 IS v_cur + 1.2*rthrust/tgo - 0.1*vthrust.
 	LOCAL pack IS cse(rc1, vc1, tgo, cser).
 	SET cser TO pack[2].
 	SET rgrav TO pack[0] - rc1 - vc1*tgo.
@@ -383,37 +379,64 @@ FUNCTION upfg {
 	
 	
 	//	8
-	LOCAL rp IS r_ + v_*tgo + rgrav + rthrust.
+	LOCAL rp IS r_cur + v_cur*tgo + rgrav + rthrust.
 	
-	IF NOT t40flag {SET rp TO VXCL(iy,rp).}
-	LOCAL ix IS rp:NORMALIZED.
-	SET iz TO VCRS(ix,iy):NORMALIZED.
-	
-	LOCAL eta_ IS 0.
- 
-	IF tgt_orb["mode"]=2 {								
-		//recompute cutoff true anomaly
-		SET eta_ TO signed_angle(tgt_orb["perivec"],rp,-iy,1).	
+	IF (NOT t40flag) {
+		SET rp TO VXCL(iy,rp).
 	}
+	
+	LOCAL vd IS v(0,0,0).
+	
+	//some code duplication but helps readability
+	IF (tgt_orb["mode"]=6) {
+		LOCAL ix IS rp:NORMALIZED.
+		SET iz TO VCRS(ix,iy):NORMALIZED.
+
+		SET tgt_orb TO TAL_cutoff_params(tgt_orb,rd).
+		SET rd TO tgt_orb["radius"]:MAG*ix.	
+		SET vd TO iz*tgt_orb["velocity"].
+	
+	} ELSE IF (tgt_orb["mode"]=7) {
+		LOCAL ix IS rp:NORMALIZED.
+		SET iz TO VCRS(ix,iy):NORMALIZED.
+		
+		SET tgt_orb TO ATO_cutoff_params(tgt_orb,rd).
+		SET rd TO tgt_orb["radius"]:MAG*ix.	
+		
+		SET vd TO rodrigues(iz,iy, tgt_orb["angle"]):NORMALIZED*tgt_orb["velocity"].	
+	
+	} ELSE {
+		LOCAL ix IS rp:NORMALIZED.
+		SET iz TO VCRS(ix,iy):NORMALIZED.
+		
+		LOCAL eta_ IS 0.
 	 
-	SET tgt_orb TO cutoff_params(tgt_orb,rd,eta_).
-	SET rd TO tgt_orb["radius"]:MAG*ix.	
-	
-	
-	LOCAL vd IS rodrigues(iz,iy, tgt_orb["angle"]):NORMALIZED*tgt_orb["velocity"].	
+		IF tgt_orb["mode"]=2 {								
+			//recompute cutoff true anomaly
+			SET tgt_orb["perivec"] TO target_perivec().
+			SET  eta_ TO signed_angle(tgt_orb["perivec"],rp,-iy,1).	
+		}
+		 
+		SET tgt_orb TO cutoff_params(tgt_orb,rd,eta_).
+		SET rd TO tgt_orb["radius"]:MAG*ix.	
+		
+		SET vd TO rodrigues(iz,iy, tgt_orb["angle"]):NORMALIZED*tgt_orb["velocity"].	
+		
+	}
 	
 
-	SET vgo TO vd - v_ - vgrav + vbias.
+	SET vgo TO vd - v_cur - vgrav + vbias.
 	
 	//	RETURN - build new internal state instead of overwriting the old one
 	LOCAL current IS LEXICON(
 		"cser", cser,
 		"rbias", rbias,
 		"rd", rd,
+		"rp", rp,
 		"rgrav", rgrav,
 		"time", t,
 		"tgo", tgo,
-		"v", v_,
+		"v", v_cur,
 		"vgo", vgo,
 		"lambda", lambda,
 		"lambdadot", lambdadot,
@@ -421,6 +444,7 @@ FUNCTION upfg {
 		"steering",iF_,
 		"throtset",Kk
 	).
+	
 	
 	RETURN LIST(current,tgt_orb).
 }

@@ -110,8 +110,7 @@ declare function open_loop_ascent{
 	
 	local steer_flag IS false.
 	
-	SET control["refvec"] TO HEADING(control["launch_az"] + 180, 0):VECTOR.
-	LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).																			   
+	SET control["refvec"] TO HEADING(control["launch_az"] + 180, 0):VECTOR.																		   
 	
 	getState().
 	
@@ -144,7 +143,7 @@ declare function open_loop_ascent{
 		
 		local aimVec is HEADING(
 								control["launch_az"],
-								pitch(SHIP:VELOCITY:SURFACE:MAG,targetspeed,scale)
+								pitch(SHIP:VELOCITY:SURFACE:MAG,targetspeed)
 		):VECTOR.
 
 		

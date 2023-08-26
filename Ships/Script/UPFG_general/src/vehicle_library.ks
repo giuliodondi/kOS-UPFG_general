@@ -102,7 +102,14 @@ declare function initialise_vehicle{
 		FOR v in stg["engines"] {
 			SET tthrust TO tthrust + v["thrust"].
 			SET iisspp TO iisspp + v["isp"]*v["thrust"].
-			SET fflow TO fflow + v["flow"].
+			
+			IF (v:HASKEY("flow")) {
+				SET fflow TO fflow + v["flow"].
+			} ELSE {
+				SET fflow TO fflow + v["thrust"] * 1000 / (v["isp"] * g0).
+			}
+			
+			
 			SET stage_res TO add_resource(stage_res,v["resources"]).
 		}
 		SET stg["engines"] TO LEXICON("thrust", tthrust, "isp", iisspp/tthrust, "flow", fflow).
@@ -178,7 +185,9 @@ declare function initialise_vehicle{
 												"throt_mult",0
 										).
 					
-					SET new_stg["Tstage"] TO glim_stg_time(new_stg).
+					LOCAL y IS const_G_t_m(new_stg).
+					SET new_stg["Tstage"] TO y[0].
+					
 					vehicle["stages"]:INSERT(k+1, new_stg).
 
 					SET k TO k+1.
@@ -220,6 +229,8 @@ declare function initialise_vehicle{
 	SET vehiclestate["m_burn_left"] TO vehicle["stages"][1]["m_burn"].
 	
 	vehicle:ADD("ign_t", 0).
+	
+	vehicle:ADD("traj_steepness", 0.5).	//placeholder
 
 	SET control["roll_angle"] TO vehicle["roll"].
 
@@ -227,30 +238,41 @@ declare function initialise_vehicle{
 	
 	PRINT " INITIALISATION COMPLETE" AT (0,3).
 	
-
-	
-	
+	//debug_vehicle().
 }
 
 
+FUNCTION debug_vehicle {
+	IF EXISTS("0:/vehicledump.txt") {
+		DELETEPATH("0:/vehicledump.txt").
+	}
+	
+	log vehicle:dump() to "0:/vehicledump.txt".
+	
+	until false{
+		wait 0.1.
+	}
+}
 
 
 
 
 									//CONTROL FUNCTIONS
 
-
+FUNCTION set_vehicle_traj_steepness {
+	PARAMETER cut_r.
+	SET vehicle["traj_steepness"] TO ((cut_r - BODY:RADIUS)/220000)^0.5.
+}
 
 
 //open-loop pitch profile for pre-UPFG
 FUNCTION pitch {
 	PARAMETER v_.
-	PARAMETER v0.
-	PARAMETER scale.			 
+	PARAMETER v0.			 
 	
-	LOCAL default IS 90.
-
-	LOCAL out IS default.
+	LOCAL refv IS 400.
+	
+	LOCAL steep_fac IS vehicle["traj_steepness"].
 	
 	IF v_>v0 {
 		
@@ -259,19 +281,19 @@ FUNCTION pitch {
 		LOCAL p3 IS 26300.
 		LOCAL q1 IS 3.923.
 		
-		LOCAL x IS v_ + 400.391 - v0.
+		LOCAL x IS v_ + refv - v0.
 	
-		SET out TO (p1*x^2 + p2*x + p3)/(x + q1).
+		LOCAL out IS CLAMP((p1*x^2 + p2*x + p3)/(x + q1), 0, 90).
 		
-		//LOCAL scale IS MIN(0.2,0.15*( (target_orbit["radius"]:MAG - BODY:RADIUS)/250000 - 1)).
-		
-		SET out TO out*(1 + scale*(1 - out/default)).
+		SET out TO out + (steep_fac - 1)*(90 - out)^0.7.
 		
 		LOCAL bias IS out - surfacestate["vdir"].
 		
-		SET out TO out + 0.8*bias.
+		RETURN CLAMP(out + 0.8*bias,0,90).
 		
 		
+	} else {
+		RETURN 90.
 	}
 
 
@@ -426,8 +448,7 @@ FUNCTION get_mass_bias {
 	local m_bias IS SHIP:MASS*1000.
 	SET m_bias TO m_bias - stg["m_initial"] + dm.
 	IF m_bias<0.5 {
-	
-	set m_bias to 0.
+		set m_bias to 0.
 	}
 
 	FROM {LOCAL k IS 1.} UNTIL k > (vehicle["stages"]:LENGTH - 1) STEP { SET k TO k+1.} DO{	
@@ -438,20 +459,54 @@ FUNCTION get_mass_bias {
 
 }
 
+//calculates burn time for a constant thrust stage 
+FUNCTION const_f_t {
+	PARAMETER stg.
+
+	LOCAL red_flow IS stg["engines"]["flow"] * stg["throttle"].
+	RETURN stg["m_burn"]/red_flow.	
+}
 
 
 //calculates when the g limit will be violated and the vehicle mass at that moment
+//returns (0,0) if the g-lim is never reached
 FUNCTION glim_t_m {
-		PARAMETER stg.
-		local out is LIST(0,0).
-		
-		local mbreak is stg["engines"]["thrust"]/(stg["glim"]*g0).
-		IF mbreak > stg["m_final"]  {
-			SET out[1] TO mbreak.
-			SET out[0] TO (stg["m_initial"] - mbreak)/stg["engines"]["flow"].
-		}
-		RETURN out.
+	PARAMETER stg.
+	local out is LIST(0,0).
+	
+	local mbreak is stg["engines"]["thrust"] * stg["Throttle"]/(stg["glim"]*g0).
+	IF mbreak > stg["m_final"]  {
+		SET out[1] TO mbreak.
+		SET out[0] TO (stg["m_initial"] - mbreak)/(stg["engines"]["flow"] * stg["Throttle"]).
 	}
+	
+	RETURN out.
+}
+
+//given a constant g stage calculates the burn time until the lower throttle limit will be reached and the vehicle mass at that moment
+FUNCTION const_G_t_m {
+	PARAMETER stg.
+	local out is LIST(0,0).
+	
+	//calculate mass of the vehicle at throttle violation 
+	LOCAL mviol IS stg["engines"]["thrust"] * stg["minThrottle"]/( stg["glim"] * g0 ).
+	
+	//initialise final mass to stage final mass
+	LOCAL m_final IS stg["m_final"].
+	
+	IF mviol > m_final  {
+		SET out[1] TO mviol.
+		SET m_final TO mviol.
+	}
+	
+	local red_isp is stg["engines"]["isp"]/stg["glim"].
+		
+	//calculate burn time until we reach the final mass 
+	SET out[0] TO red_isp * LN( stg["m_initial"]/m_final ).
+		
+	RETURN out.
+}
+
 
 //calculates new stage burn time  as a sum of constant g burn time
 //and constant t burn time at minimum throttle
@@ -614,29 +669,30 @@ FUNCTION getState {
 	LOCAL avg_thrust is vehiclestate["avg_thr"]:average().
 	LOCAL avg_isp is x[1].
 
+	IF NOT stg:HASKEY("tankparts") {get_stg_tanks(stg).}
+		
+	LOCAL m_old IS stg["m_initial"].
+
+	SET stg["m_initial"] TO SHIP:MASS*1000.
+	
+	LOCAL dm IS m_old - stg["m_initial"].
+	
+	SET stg["m_final"] TO stg["m_final"] -  dm.
 	
 	IF NOT (vehiclestate["staging_in_progress"]) {
 		
-		IF NOT stg:HASKEY("tankparts") {get_stg_tanks(stg).}
-		
-		LOCAL m_old IS stg["m_initial"].
-		
-	
-		SET stg["m_initial"] TO SHIP:MASS*1000.
-		
-		LOCAL dm IS m_old - stg["m_initial"].
-		
 		local res_left IS get_prop_mass(stg).
 
-		local dmburn IS vehiclestate["m_burn_left"] - res_left.
+		//local dmburn IS vehiclestate["m_burn_left"] - res_left.
+		
 		SET vehiclestate["m_burn_left"] to res_left.
 		
-		SET stg["m_final"] TO stg["m_initial"] - res_left.
+		//SET stg["m_final"] TO stg["m_initial"] - res_left.
+		//SET stg["m_final"] TO stg["m_final"] - ( dm - dmburn ).
 		
-		SET stg["m_final"] TO stg["m_final"] - ( dm - dmburn ).
 								 
 		IF stg_staginginfo="m_burn" {
-			SET stg["m_burn"] TO stg["m_burn"] - dmburn.
+			SET stg["m_burn"] TO stg["m_burn"] - dm.
 		}
 		ELSE IF (stg_staginginfo="time") {
 		    	SET stg["Tstage"] TO stg["Tstage"] - deltat.
@@ -661,7 +717,7 @@ FUNCTION getState {
 			SET stg["Tstage"] TO y[0].
 			
 			IF nextstg["mode"]=1 {
-				SET nextstg["Tstage"] TO (nextstg["m_burn"])/nextstg["engines"]["flow"].
+				SET nextstg["Tstage"] TO const_f_t(nextstg).
 			}
 			ELSE IF nextstg["mode"]=2 {
 				SET nextstg["Tstage"] TO glim_stg_time(nextstg).
@@ -671,25 +727,34 @@ FUNCTION getState {
 			
 			SET stg["m_burn"] TO res_left.
 			
-			local thrustfortime IS stg["engines"]["thrust"].
-			
-			IF NOT (vehiclestate["ops_mode"]=2) AND  (avg_thrust>0) {
-					SET stg["engines"]["isp"] TO avg_isp/avg_thrust.
-					SET thrustfortime TO avg_thrust.
+			IF stg["mode"]=1 {
+				SET stg["Tstage"] TO const_f_t(stg).
+			} ELSE IF stg["mode"]=2 {
+				SET stg["Tstage"] TO glim_stg_time(stg).
 			}
-			SET thrustfortime TO thrustfortime*stg["Throttle"].
 			
-			IF thrustfortime>0 AND stg["engines"]["isp"]>0 {	
-							
-				local tt is 0.
-				IF stg["mode"]=1 {
-					SET stg["engines"]["flow"] TO  thrustfortime/(stg["engines"]["isp"]*g0).
-					SET stg["Tstage"] TO (stg["m_burn"])/stg["engines"]["flow"].
-				}
-				ELSE IF stg["mode"]=2 {
-					SET stg["Tstage"] TO glim_stg_time(stg).
-				}
-			}
+			
+			
+			//local thrustfortime IS stg["engines"]["thrust"].
+			//
+			//IF NOT (vehiclestate["ops_mode"]=2) AND  (avg_thrust>0) {
+			//		SET stg["engines"]["isp"] TO avg_isp/avg_thrust.
+			//		SET thrustfortime TO avg_thrust.
+			//}
+			//SET thrustfortime TO thrustfortime*stg["Throttle"].
+			//
+			//IF thrustfortime>0 AND stg["engines"]["isp"]>0 {	
+			//				
+			//	local tt is 0.
+			//	IF stg["mode"]=1 {
+			//		SET stg["engines"]["flow"] TO  thrustfortime/(stg["engines"]["isp"]*g0).
+			//		SET stg["Tstage"] TO (stg["m_burn"])/stg["engines"]["flow"].
+			//	}
+			//	ELSE IF stg["mode"]=2 {
+			//		SET stg["Tstage"] TO glim_stg_time(stg).
+			//	}
+			//}
+			 
 		}
 	}	
 }
