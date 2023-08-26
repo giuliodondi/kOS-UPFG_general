@@ -399,7 +399,7 @@ declare function moon_shot {
 
 		//if not rotate the entire plane to intersect the antipode vector
 		
-		SET target_orbit["LAN"] TO fixangle(target_orbit["LAN"] - 1.1 * dLNG ).
+		SET target_orbit["LAN"] TO fixangle(target_orbit["LAN"] - 0.7 * dLNG ).
 		SET injectionvec TO rodrigues(injectionvec,V(0,1,0),dLNG ).
 		SET tlivec TO rodrigues(tlivec,V(0,1,0),dLNG).
 		SET target_orbit["normal"] TO targetNormal(ABS(target_orbit["inclination"]), target_orbit["LAN"]).
