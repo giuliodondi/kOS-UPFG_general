@@ -77,41 +77,38 @@ FUNCTION cutoff_params {
 	
 	LOCAL mode IS target["mode"].
 	
-	IF mode<>5 {
+	SET target["normal"] TO targetNormal(target["inclination"], target["LAN"]).
 	
-		local x is 1 + target["ecc"]*COS(etaa).
-		
-		local r_ is cutoff_r:MAG.
-		
-		IF mode=2{ //given sma, ecc and eta, compute r
-			set r_ to target["SMA"]*(1-target["ecc"]^2)/x.	
-		}
-		ELSE IF mode=1 {	//given sma, ecc and r, compute eta
-			IF target["ecc"]=0 {set etaa to  0.}
-			ELSE {		
-				set etaa to (target["SMA"]*(1-target["ecc"]^2)/r_ - 1)/target["ecc"].
-				set etaa to ARCCOS(etaa).
-			}
-			set x to 1 + target["ecc"]*COS(etaa).
-		}
-		
-		
-		//ELSE IF mode=1 {	//given r, ecc and eta, compute sma
-		//	SET target["SMA"] TO x*r_/(1-target["ecc"]^2).
-		//}
+	local x is 1 + target["ecc"]*COS(etaa).
 	
-		local v_ is SQRT(SHIP:BODY:MU * (2/r_ - 1/target["SMA"])).
-			
-		local phi is target["ecc"]*sin(etaa)/x.
-		set phi to ARCTAN(phi).
-		
-		set target["radius"] to cutoff_r:NORMALIZED*r_.
-		set target["velocity"] to v_.
-		set target["angle"] to phi.
-		set target["eta"] to etaa.
+	local r_ is cutoff_r:MAG.
+	
+	IF mode=2{ //given sma, ecc and eta, compute r
+		set r_ to target["SMA"]*(1-target["ecc"]^2)/x.	
+	}
+	ELSE IF mode=1 {	//given sma, ecc and r, compute eta
+		IF target["ecc"]=0 {set etaa to  0.}
+		ELSE {		
+			set etaa to (target["SMA"]*(1-target["ecc"]^2)/r_ - 1)/target["ecc"].
+			set etaa to ARCCOS(etaa).
+		}
+		set x to 1 + target["ecc"]*COS(etaa).
 	}
 	
 	
+	//ELSE IF mode=1 {	//given r, ecc and eta, compute sma
+	//	SET target["SMA"] TO x*r_/(1-target["ecc"]^2).
+	//}
+
+	local v_ is SQRT(SHIP:BODY:MU * (2/r_ - 1/target["SMA"])).
+		
+	local phi is target["ecc"]*sin(etaa)/x.
+	set phi to ARCTAN(phi).
+	
+	set target["radius"] to cutoff_r:NORMALIZED*r_.
+	set target["velocity"] to v_.
+	set target["angle"] to phi.
+	set target["eta"] to etaa.
 	
 	RETURN target.
 }
@@ -217,7 +214,9 @@ declare function moon_shot {
 	//initialise antipode vector
 	LOCAL antipodevec IS (-moon_transfer["body"]:POSITION + SHIP:ORBIT:BODY:POSITION):NORMALIZED*SHIP:ORBIT:BODY:RADIUS*2.
 	
-	//arrow(antipodevec, "antipode_0",SHIP:ORBIT:BODY:POSITION,1,0.5).
+	if (debug) {
+		arrow_body(antipodevec, "antipode1").
+	}
 	
 	//find transfer time
 	
@@ -245,8 +244,6 @@ declare function moon_shot {
 	//still missing pre-launch warp time and parking orbit coast time
 	//will compute them iteratively
 	LOCAL tau0 IS  eta_to_dt(ARCCOS(cosnu),sma,ecc) + vehicle["launchTimeAdvance"] + 10.1.
-
-
 	
 	LOCAL moon_orbit IS LEXICON (	
 							"SMA",moon_transfer["body"]:ORBIT:SEMIMAJORAXIS,
@@ -258,14 +255,25 @@ declare function moon_shot {
 	
 	SET moon_orbit["normal"] TO targetNormal(ABS(moon_orbit["inclination"]), moon_orbit["LAN"]).
 	
+	if (debug) {
+		arrow_body(vecYZ(moon_orbit["normal"]) * SHIP:ORBIT:BODY:RADIUS, "moon_normal").
+	}
 
 	//rotate antipode the first time by at least the transfer time
 	//find the MASTER antipode on which the rest is based
-	LOCAL rota IS t_to_eta(moon_transfer["body"]:ORBIT:TRUEANOMALY,tau0,moon_orbit["SMA"],moon_orbit["ecc"]) + moon_transfer["lead_angle"].
-	SET rota TO rota -moon_transfer["body"]:ORBIT:TRUEANOMALY + moon_transfer["lead_angle"] + gamma1.
+	LOCAL rota IS t_to_eta(moon_transfer["body"]:ORBIT:TRUEANOMALY,tau0,moon_orbit["SMA"],moon_orbit["ecc"]) - moon_transfer["body"]:ORBIT:TRUEANOMALY .
+	
+	if (debug) {
+		PRINT "transfer time " + sectotime(tau0) AT (0,44).
+		PRINT "moon transfer rotation " + rota AT (0,45).
+	}
+	
+	SET rota TO rota + moon_transfer["lead_angle"] + gamma1.
 	SET antipodevec TO rodrigues(antipodevec, vecYZ(moon_orbit["normal"]), rota). 
 	
-
+	if (debug) {
+		arrow_body(antipodevec, "antipode2").
+	}
 	
 	//LAN and injection vector given inclination and "right now" launch
 	//LOCAL injectionvec IS cutoff_vec(target_orbit["inclination"]).
@@ -297,16 +305,17 @@ declare function moon_shot {
 	LOCAL above IS TRUE.
 	IF SIGN(antipodelat)<0 {set above to FALSE.}
 	
+	if (debug) {
+		
+	}
+	
 	//is the antipode closer to its ascending or descending node?
 	local apveclng IS VXCL(V(0,1,0),antipodevec).
 	LOCAL deltalng_lan IS signed_angle( apveclng ,  SOLARPRIMEVECTOR,v(0,1,0),1).
-	set deltalng_lan TO deltalng_lan - moon_orbit["LAN"].
-	
-	PRINT "difference of longitude of antipode and moon lan: " + deltalng_lan AT (0,48).
+	set deltalng_lan TO unfixangle(deltalng_lan - moon_orbit["LAN"]).
 	
 	LOCAL asc IS TRUE.
 	IF ABS(deltalng_lan)>90 {set asc to FALSE.} 
-	PRINT "moon ascending: " + asc AT (0,49).
 	
 	//should TLI occur close to the parking orbit's ascending or descending node?
 	LOCAL ldn IS FALSE.
@@ -328,12 +337,13 @@ declare function moon_shot {
 		IF NOT above {SET tli_s TO -1.}
 	}
 
-	
-	
-	
-	PRINT "lan or ldn: " + ldn AT (0,50).
-	PRINT "tli rotation sign: " + tli_s AT (0,51).
-	
+	if (debug) {
+		PRINT "moon above: " + above AT (0,47).
+		PRINT "difference of longitude of antipode and moon lan: " + deltalng_lan AT (0,48).
+		PRINT "moon ascending: " + asc AT (0,49).
+		PRINT "lan or ldn: " + ldn AT (0,50).
+		PRINT "tli rotation sign: " + tli_s AT (0,51).
+	}
 	
 	//time factors
 	GLOBAL tli_wait IS 3600.
@@ -350,35 +360,25 @@ declare function moon_shot {
 		//adjust "time ahead"
 		LOCAL tau IS tau0 + tli_wait + warp_dt.
 		
-		
-		
 		//current antipode vector
 		//LOCAL antipodevec IS -moon_transfer["body"]:POSITION + SHIP:BODY:POSITION.
 		LOCAL antipodevec IS (-moon_transfer["body"]:POSITION + SHIP:ORBIT:BODY:POSITION):NORMALIZED*SHIP:ORBIT:BODY:RADIUS*2.
-		
-		
 		
 		//rotate antipode given time ahead
 		SET rota TO t_to_eta(moon_transfer["body"]:ORBIT:TRUEANOMALY,tau,moon_orbit["SMA"],moon_orbit["ecc"]).
 		SET rota TO rota -moon_transfer["body"]:ORBIT:TRUEANOMALY + moon_transfer["lead_angle"] + gamma1.
 		SET antipodevec TO rodrigues(antipodevec, vecYZ(moon_orbit["normal"]), rota). 
-		print "lunar rot angle between now and arrival: " + rota  at (0,53).
-		
-		
 	
 		//TLI vector initialised as ascending node and if appropriate turned into descending node
 		
 		LOCAL tlivec IS rodrigues(SOLARPRIMEVECTOR, V(0,1,0), -target_orbit["LAN"]):NORMALIZED*SHIP:ORBIT:BODY:RADIUS*2..
 		IF ldn {SET tlivec TO -tlivec.}
-
 	
 		//rotate TLI vector given antipode's latitude
 		LOCAL antipodelat IS ABS(BODY:GEOPOSITIONOF(antipodevec + SHIP:BODY:POSITION):LAT).
-		SET rota TO get_c_bBB(antipodelat,target_orbit["inclination"]).
+		SET rot_antip TO fixangle(get_c_bBB(antipodelat,target_orbit["inclination"])).
 
-		SET tlivec TO rodrigues(tlivec, vecYZ(target_orbit["normal"]), tli_s*rota). 
-		
-		
+		SET tlivec TO rodrigues(tlivec, vecYZ(target_orbit["normal"]), tli_s*rot_antip). 
 		
 		//set longitude of periapsis to longitude of TLI
 		local pveclng IS VXCL(V(0,1,0),tlivec).
@@ -394,34 +394,36 @@ declare function moon_shot {
 		//SET dLNG TO project_angle(dLNG,antipodelat).
 
 		
-		PRINT "delta_longitude: " + dLNG AT (0,56).
-		
 		//if so exit, the orbit plane has been completely determined
 		IF ABS(dLNG) <= epsilon {BREAK.}
 
 		//if not rotate the entire plane to intersect the antipode vector
 		
-		SET target_orbit["LAN"] TO fixangle(target_orbit["LAN"] - dLNG ).
+		SET target_orbit["LAN"] TO fixangle(target_orbit["LAN"] - 1.1 * dLNG ).
 		SET injectionvec TO rodrigues(injectionvec,V(0,1,0),dLNG ).
 		SET tlivec TO rodrigues(tlivec,V(0,1,0),dLNG).
 		SET target_orbit["normal"] TO targetNormal(ABS(target_orbit["inclination"]), target_orbit["LAN"]).
 		
-		local xxx is signed_angle(tlivec, antipodevec , v(0,1,0),0).	
-		
-		PRINT xxx AT (0,57).
+		local tli_antip_angle is signed_angle(tlivec, antipodevec , v(0,1,0),0).	
 		
 		//compute warp time to this new plane
 		SET warp_dt TO orbitInterceptTime() .
-
 		
 		//estimate coast time between injection and TLI
-		SET rota TO signed_angle(injectionvec,tlivec ,vecYZ(target_orbit["normal"]) ,1).
+		SET coasta TO signed_angle(injectionvec,tlivec ,vecYZ(target_orbit["normal"]) ,1).
 		//remember that we assume the periapsis is at tli.
-		SET tli_wait TO eta_to_dt(rota,target_orbit["SMA"],target_orbit["ecc"]).
-		print "parking obt coast angle:" + rota at (0,59).
+		SET tli_wait TO eta_to_dt(coasta,target_orbit["SMA"],target_orbit["ecc"]).
+		
+		
+		if (debug) {
+			print "lunar rot angle between now and arrival: " + rota  at (0,53).
+			PRINT "delta_longitude: " + dLNG AT (0,56).
+			PRINT "tli/antipode angle: " + tli_antip_angle AT (0,57).
+			print "parking obt coast angle:" + coasta at (0,59).
+		}
 
 		//if TLI is less than half an orbit away add one full orbit
-		IF rota<180 {
+		IF coasta<180 {
 			SET tli_wait TO tli_wait + pkobt_t.
 		}
 		
@@ -442,8 +444,15 @@ declare function moon_shot {
 	SET target_orbit["LAN"] TO fixangle(target_orbit["LAN"] -  j2LNG*tli_wait ).
 	
 	PRINT "                                                               " at (0,11).
-	PRINT "TLI SCHEDULED FOR " + sectotime(tli_wait) + " AFTER INJECTION" AT (0,11).
-	//until false {}.
+	PRINT " TLI SCHEDULED FOR " + sectotime(tli_wait) + " AFTER INJECTION" AT (0,11).
+	
+	SET target_orbit["normal"] TO targetNormal(ABS(target_orbit["inclination"]), target_orbit["LAN"]).
+	
+	if (debug) {
+		arrow_body(vecYZ(target_orbit["normal"]) * SHIP:ORBIT:BODY:RADIUS, "tli_normal").
+	}
+	
+	until (NOT debug) {}.
 
 }
 
@@ -949,9 +958,6 @@ FUNCTION prepare_launch {
 		SET cut_alt TO (cut_alt*1000 + SHIP:BODY:RADIUS).
 		set target_orbit["radius"] TO cutvec:NORMALIZED*cut_alt.
 	}
-	
-	
-	
 
 	
 	PRINT " COMPUTING PERIAPSIS VECTOR" AT (0,15).
@@ -971,6 +977,8 @@ FUNCTION prepare_launch {
 	}
 	target_orbit:ADD("eta", etaa) .
 	SET target_orbit TO cutoff_params(target_orbit,target_orbit["radius"],etaa).
+	
+	set_vehicle_traj_steepness(target_orbit["radius"]:MAG).
 	
 	PRINT " CALCULATING TIME TO LAUNCH " AT (0,19).	
 	
