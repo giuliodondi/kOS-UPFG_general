@@ -230,6 +230,7 @@ declare function closed_loop_ascent{
 	
 	//put terminal logic in its own block
 	addMessage("WAITING FOR MECO").
+	
 	UNTIL FALSE {
 		getState().
 		IF (SHIP:VELOCITY:ORBIT:MAG >= target_orbit["velocity"]) {
@@ -240,6 +241,7 @@ declare function closed_loop_ascent{
 			FOR E IN Eng {IF e:ISTYPE("engine") {E:SHUTDOWN.}}
 			BREAK.
 		}
+		dataViz().
 	}
 	
 	//just in case it hasn't been done previously

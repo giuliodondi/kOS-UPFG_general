@@ -31,10 +31,18 @@ FUNCTION setupUPFG {
 	LOCAL curR IS orbitstate["radius"].
 	LOCAL curV IS orbitstate["velocity"].
 
-	SET target_orbit["normal"] TO targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
+	SET target_orbit["normal"] TO upfg_normal(target_orbit["inclination"], target_orbit["LAN"]).
+	
+	local cutvec is VXCL(target_orbit["normal"], vecYZ(-SHIP:ORBIT:BODY:POSITION)):NORMALIZED.
+	//arbitrarily set cutoff point at 30 degrees ahead of the current position.
+	set cutvec to rodrigues(cutvec, target_orbit["normal"], 30).
+	
+	LOCAL cutoff_r IS target_orbit["cutoff alt"]*1000 + SHIP:BODY:RADIUS.
+	
+	set target_orbit["radius"] TO cutvec:NORMALIZED * cutoff_r.
 
 	LOCAL tgoV IS VCRS(-target_orbit["normal"], target_orbit["radius"]):NORMALIZED.	
-	SET tgoV TO rodrigues(tgoV,target_orbit["normal"], target_orbit["angle"]).	
+	SET tgoV TO rodrigues(tgoV,target_orbit["normal"], target_orbit["fpa"]).	
 	SET tgoV TO target_orbit["velocity"]* tgoV - curV.
 	
 	//LOCAL tgoV IS target_orbit["velocity"] - curV.
@@ -92,6 +100,13 @@ FUNCTION upfg_framerot {
 
 }
 
+FUNCTION upfg_normal {
+	PARAMETER tgtIncl.
+	PARAMETER tgtLAN.
+
+	RETURN vecYZ(targetNormal(tgtIncl, tgtLAN)). 
+}
+
 FUNCTION upfg_wrapper {
 
 	DECLARE PARAMETER upfgInternal.
@@ -99,8 +114,7 @@ FUNCTION upfg_wrapper {
 
 	LOCAL currentIterationTime IS surfacestate["MET"].
 	
-	//clearvecdraws().
-	//arrow(vecyz(upfgInternal["steering"]),"iF1").
+	clearvecdraws().
 	
 	LOCAL wasconv IS usc["conv"]=1.
 	
@@ -115,6 +129,9 @@ FUNCTION upfg_wrapper {
 	
 	LOCAL upfgOutput IS out[0].
 	SET target_orbit TO out[1].
+	
+	arrow_body(vecYZ(target_orbit["normal"]), "norm").
+	arrow_body(vecYZ(target_orbit["radius"]), "cutoff").
 	
 	IF NOT usc["terminal"] {
 		IF usc["conv"]<1 {SET usc["itercount"] TO usc["itercount"]+1.}
@@ -205,7 +222,7 @@ FUNCTION upfg_regular {
 	LOCAL rd IS previous["rd"].
 	LOCAL rbias IS previous["rbias"].
 	LOCAL rgrav IS previous["rgrav"].
-	LOCAL iy IS tgt_orb["normal"]:NORMALIZED.
+	LOCAL iy IS -tgt_orb["normal"]:NORMALIZED.
 	LOCAL iz IS VCRS(rd,iy):NORMALIZED.
 	LOCAL m IS vehicle[0]["m_initial"].
 	LOCAL Kk IS previous["throtset"].
@@ -387,43 +404,13 @@ FUNCTION upfg_regular {
 	
 	LOCAL vd IS v(0,0,0).
 	
-	//some code duplication but helps readability
-	IF (tgt_orb["mode"]=6) {
-		LOCAL ix IS rp:NORMALIZED.
-		SET iz TO VCRS(ix,iy):NORMALIZED.
-
-		SET tgt_orb TO TAL_cutoff_params(tgt_orb,rd).
-		SET rd TO tgt_orb["radius"]:MAG*ix.	
-		SET vd TO iz*tgt_orb["velocity"].
+	LOCAL ix IS rp:NORMALIZED.
+	SET iz TO VCRS(ix,iy):NORMALIZED.
 	
-	} ELSE IF (tgt_orb["mode"]=7) {
-		LOCAL ix IS rp:NORMALIZED.
-		SET iz TO VCRS(ix,iy):NORMALIZED.
-		
-		SET tgt_orb TO ATO_cutoff_params(tgt_orb,rd).
-		SET rd TO tgt_orb["radius"]:MAG*ix.	
-		
-		SET vd TO rodrigues(iz,iy, tgt_orb["angle"]):NORMALIZED*tgt_orb["velocity"].	
+	SET tgt_orb TO cutoff_params(tgt_orb,rd).
 	
-	} ELSE {
-		LOCAL ix IS rp:NORMALIZED.
-		SET iz TO VCRS(ix,iy):NORMALIZED.
-		
-		LOCAL eta_ IS 0.
-	 
-		IF tgt_orb["mode"]=2 {								
-			//recompute cutoff true anomaly
-			SET tgt_orb["perivec"] TO target_perivec().
-			SET  eta_ TO signed_angle(tgt_orb["perivec"],rp,-iy,1).	
-		}
-		 
-		SET tgt_orb TO cutoff_params(tgt_orb,rd,eta_).
-		SET rd TO tgt_orb["radius"]:MAG*ix.	
-		
-		SET vd TO rodrigues(iz,iy, tgt_orb["angle"]):NORMALIZED*tgt_orb["velocity"].	
-		
-	}
-	
+	SET rd TO tgt_orb["radius"]:MAG*ix.	
+	SET vd TO rodrigues(iz,iy, tgt_orb["fpa"]):NORMALIZED*tgt_orb["velocity"].	
 
 	SET vgo TO vd - v_cur - vgrav + vbias.
 	
@@ -442,7 +429,11 @@ FUNCTION upfg_regular {
 		"lambdadot", lambdadot,
 		"t_lambda",(t + K_),
 		"steering",iF_,
-		"throtset",Kk
+		"throtset",Kk,
+		"flyback_flag",false,
+		"dmbo",0,
+		"mbod",0,
+		"Tc",0
 	).
 	
 	

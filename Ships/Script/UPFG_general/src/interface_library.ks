@@ -235,7 +235,7 @@ FUNCTION dataViz {
 	PRINTPLACE(ROUND(target_orbit["inclination"],4) + " deg",12,50,orbloc + 3).
 	PRINTPLACE(ROUND(target_orbit["LAN"],2) + " deg",12,50,orbloc + 4).
 	PRINTPLACE(ROUND(target_orbit["eta"],2) + " deg",12,50,orbloc + 5).
-	PRINTPLACE(ROUND((target_orbit["radius"]:MAG - SHIP:BODY:RADIUS)/1000,2) + " km",12,50,orbloc + 6).
+	PRINTPLACE(ROUND(target_orbit["cutoff alt"],2) + " km",12,50,orbloc + 6).
 	
 	
 	

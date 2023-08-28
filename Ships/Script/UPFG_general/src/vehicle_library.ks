@@ -1,7 +1,7 @@
 //Global vars
 
-
 GLOBAL g0 IS 9.80665. 
+GLOBAL vehicle_countdown IS 10.
 
 
 GLOBAL vehiclestate IS LEXICON(
@@ -230,7 +230,7 @@ declare function initialise_vehicle{
 	
 	vehicle:ADD("ign_t", 0).
 	
-	vehicle:ADD("traj_steepness", 0.5).	//placeholder
+	vehicle:ADD("traj_steepness", 0.9).	//placeholder
 
 	SET control["roll_angle"] TO vehicle["roll"].
 
@@ -260,8 +260,8 @@ FUNCTION debug_vehicle {
 									//CONTROL FUNCTIONS
 
 FUNCTION set_vehicle_traj_steepness {
-	PARAMETER cut_r.
-	SET vehicle["traj_steepness"] TO ((cut_r - BODY:RADIUS)/220000)^0.5.
+	PARAMETER cut_alt.
+	SET vehicle["traj_steepness"] TO (cut_alt/220)^0.5.
 }
 
 
