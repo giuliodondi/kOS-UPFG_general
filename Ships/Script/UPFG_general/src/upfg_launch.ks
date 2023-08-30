@@ -68,7 +68,8 @@ declare function countdown{
 
 declare function open_loop_ascent{
 
-	SET STEERINGMANAGER:ROLLTS TO 5.
+	SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO 180.
+	SET STEERINGMANAGER:ROLLTS TO 8.
 	
 	SET vehiclestate["ops_mode"] TO 1.
 	
@@ -161,7 +162,7 @@ declare function open_loop_ascent{
 
 
 declare function closed_loop_ascent{
-	SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO 180.
+	
 	SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.2.
 	
 	SET vehiclestate["ops_mode"] TO 2.
@@ -203,8 +204,6 @@ declare function closed_loop_ascent{
 			IF HASTARGET = TRUE AND (TARGET:BODY = SHIP:BODY) {
 				SET target_orbit TO tgt_j2_timefor(target_orbit,upfgInternal["tgo"]).
 			}															 
-			//SET target_orbit["normal"] TO targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
-			//SET target_orbit["perivec"] TO target_perivec().
 		}
 		
 		getState().
@@ -218,9 +217,8 @@ declare function closed_loop_ascent{
 			SET control["steerdir"] TO "kill".
 		}		
 		
-		IF vehicle["stages"][vehiclestate["cur_stg"]]["mode"] <> 2 {
-			SET vehicle["stages"][vehiclestate["cur_stg"]]["Throttle"] TO usc["lastthrot"].		
-		}
+		SET vehicle["stages"][vehiclestate["cur_stg"]]["Throttle"] TO usc["lastthrot"].		
+		
 		dataViz().
 		WAIT 0.
 	}

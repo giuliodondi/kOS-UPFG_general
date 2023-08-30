@@ -130,8 +130,8 @@ FUNCTION upfg_wrapper {
 	LOCAL upfgOutput IS out[0].
 	SET target_orbit TO out[1].
 	
-	arrow_body(vecYZ(target_orbit["normal"]), "norm").
-	arrow_body(vecYZ(target_orbit["radius"]), "cutoff").
+	//arrow_body(vecYZ(target_orbit["normal"]), "norm").
+	//arrow_body(vecYZ(target_orbit["radius"]), "cutoff").
 	
 	IF NOT usc["terminal"] {
 		IF usc["conv"]<1 {SET usc["itercount"] TO usc["itercount"]+1.}
