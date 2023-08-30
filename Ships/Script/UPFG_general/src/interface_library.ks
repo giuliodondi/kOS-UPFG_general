@@ -223,8 +223,8 @@ FUNCTION dataViz {
 
 	
 	LOCAL currentOrbitNormal IS targetNormal(SHIP:ORBIT:INCLINATION, SHIP:ORBIT:LAN).
-	LOCAL relativeAngle IS VANG(currentOrbitNormal, target_orbit["normal"]).
-	PRINTPLACE(ROUND(relativeAngle,3) + " deg",12,19,orbloc + 6).
+	LOCAL tgtnormal IS targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
+	PRINTPLACE(ROUND(VANG(currentOrbitNormal, currentOrbitNormal),3) + " deg",12,19,orbloc + 6).
 	
 	
 	//TARGET ORBIT DATA 
