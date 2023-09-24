@@ -137,8 +137,8 @@ declare function open_loop_ascent{
 		}
 		ELSE {
 			IF vehiclestate["cur_stg"]=vehicle["handover"]["stage"] {
-				vehicle["handover"]:ADD("time", TIME:SECONDS ).
-				BREAK.
+				vehicle["handover"]:ADD("time", TIME:SECONDS + 5 ).
+				vehicle["handover"]:REMOVE("stage").
 			}
 		}
 		
