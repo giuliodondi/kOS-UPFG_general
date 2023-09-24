@@ -29,23 +29,7 @@ GLOBAL events IS LIST().
 
 //VEHICLE INITIALISATION FUNCTION 
 
-declare function initialise_vehicle{
-
-	RUNPATH("0:/Libraries/resources_library").	
-
-	
-	FUNCTION add_resource {
-		parameter lexx.
-		parameter reslist.
-		
-		
-		for res in reslist {
-			IF NOT lexx:HASKEY(res) {lexx:ADD(res,0).}
-		}
-		RETURN lexx.
-	}
-	
-	
+FUNCTION initialise_vehicle{
 	
 	FUNCTION fix_mass_params {
 		parameter stg.
@@ -100,7 +84,6 @@ declare function initialise_vehicle{
 		LOCAL iisspp IS 0.
 		LOCAL tthrust IS 0.
 		LOCAL fflow IS 0.
-		local stage_res IS LEXICON().
 		
 		IF (stg["engines"]:ISTYPE("LIST")) {
 			//trigger that we should do the initial stage parsing 
@@ -114,14 +97,8 @@ declare function initialise_vehicle{
 					SET fflow TO fflow + v["thrust"] * 1000 / (v["isp"] * g0).
 				}
 				
-				
-				SET stage_res TO add_resource(stage_res,v["resources"]).
 			}
 			SET stg["engines"] TO LEXICON("thrust", tthrust, "isp", iisspp/tthrust, "flow", fflow).
-			
-			SET stage_res TO res_dens_init(stage_res).
-		
-			stg:ADD("resources",stage_res).
 			
 			fix_mass_params(stg).
 		
@@ -178,7 +155,6 @@ declare function initialise_vehicle{
 															"ullage_t",	0
 												),
 												"engines",	stg["engines"],
-												"resources",stg["resources"],
 												"Tstage",0,
 												"mode", 2,
 												"glim",stg["glim"],
@@ -262,7 +238,6 @@ declare function initialise_vehicle{
 															"ullage_t",	0
 												),
 												"engines",	stg["engines"],
-												"resources",stg["resources"],
 												"Tstage",0,
 												"mode", 1,
 												"glim",stg["glim"],
@@ -491,7 +466,7 @@ FUNCTION get_mass_bias {
 
 	LOCAL stg IS vehicle["stages"][1].
 		
-	IF NOT stg:HASKEY("tankparts") {get_stg_tanks(stg).}
+	IF NOT stg:HASKEY("tankparts") {get_stg_tanks_res(stg).}
 	local res_left IS get_prop_mass(stg).
 
 	local dm IS vehiclestate["m_burn_left"] - res_left.
@@ -598,12 +573,35 @@ FUNCTION get_TWR {
 
 
 
-FUNCTION get_stg_tanks {
+FUNCTION get_stg_tanks_res {
+
+	FUNCTION get_stg_res {
+		PARAMETER stg.
+		
+		local reslex is LEXICON().
+		
+		list ENGINES in all_eng.
+		LOCAL parentpart IS 0.
+		FOR e IN all_eng {
+			IF e:ISTYPE("engine") {
+				IF e:IGNITION {
+					FOR res IN e:consumedresources:VALUES {
+						IF NOT reslex:HASKEY(res:name) {
+							reslex:ADD(res:name, res).
+						}
+					}
+				}
+			}
+		}
+		
+		RETURN reslex.
+
+	}
 
 	FUNCTION parts_tree {
 		parameter part0.
 		parameter partlist.
-		parameter reslist.
+		parameter reslex.
 	
 		
 		
@@ -617,14 +615,14 @@ FUNCTION get_stg_tanks {
 		//	SET parentpart TO parentpart:PARENT.
 		//}
 		
-		FOR res IN reslist:KEYS {
+		FOR res IN reslex:VALUES {
 			LOCAL  parentpart IS part0.
 			local breakflag IS FALSE.
 			UNTIL FALSE {
 				wait 0.
 				
 				FOR partres IN parentpart:RESOURCES {
-					IF res=partres:NAME { 
+					IF res:NAME=partres:NAME { 
 						IF NOT partlist:CONTAINS(parentpart) {partlist:ADD( parentpart ).}
 						SET breakflag TO TRUE.
 					}
@@ -645,14 +643,19 @@ FUNCTION get_stg_tanks {
 	PARAMETER stg.
 
 	local tanklist IS LIST().
-	local reslist is stg["resources"].
+	
+	local reslex is get_stg_res(stg).
+	
+	print reslex:keys at (5,55).
+	
+	stg:ADD("resources", reslex).
 	
 	list ENGINES in all_eng.
 	LOCAL parentpart IS 0.
 	FOR e IN all_eng {
 		IF e:ISTYPE("engine") {
 			IF e:IGNITION {
-				SET tanklist TO parts_tree(e:PARENT,tanklist,reslist).
+				SET tanklist TO parts_tree(e:PARENT,tanklist,reslex).
 			}
 		}
 	}
@@ -661,10 +664,11 @@ FUNCTION get_stg_tanks {
 	IF tanklist:LENGTH=0 {
 		LOCAL duct_list IS SHIP:PARTSDUBBED("fuelLine").
 		FOR d IN duct_list {
-			SET tanklist TO parts_tree(d:PARENT,tanklist,reslist).
+			SET tanklist TO parts_tree(d:PARENT,tanklist,reslex).
 		}
 	}
 	stg:ADD("tankparts", tanklist).	
+	
 	
 }
 
@@ -672,14 +676,14 @@ FUNCTION get_prop_mass {
 	PARAMETER stg.
 	
 	local tanklist is stg["tankparts"].
-	local reslist is stg["resources"].
+	local reslex is stg["resources"].
 	local prop_mass IS 0.
 	
 	FOR tk IN tanklist {
 		FOR tkres In tk:RESOURCES {
-			FOR res IN reslist:KEYS {
-				IF tkres:NAME = res {
-					set prop_mass TO prop_mass + tkres:amount*reslist[res].
+			FOR res IN reslex:VALUES {
+				IF tkres:NAME = res:NAME {
+					set prop_mass TO prop_mass + tkres:amount * res:DENSITY.
 				}
 		
 			}
@@ -719,7 +723,7 @@ FUNCTION getState {
 	LOCAL avg_thrust is vehiclestate["avg_thr"]:average().
 	LOCAL avg_isp is x[1].
 
-	IF NOT stg:HASKEY("tankparts") {get_stg_tanks(stg).}
+	IF NOT stg:HASKEY("tankparts") {get_stg_tanks_res(stg).}
 		
 	LOCAL m_old IS stg["m_initial"].
 
