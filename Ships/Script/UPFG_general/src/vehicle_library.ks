@@ -646,8 +646,6 @@ FUNCTION get_stg_tanks_res {
 	
 	local reslex is get_stg_res(stg).
 	
-	print reslex:keys at (5,55).
-	
 	stg:ADD("resources", reslex).
 	
 	list ENGINES in all_eng.

@@ -90,22 +90,21 @@ declare function open_loop_ascent{
 	}
 	SET control["steerdir"] TO LOOKDIRUP(-SHIP:ORBIT:BODY:POSITION, SHIP:FACING:TOPVECTOR).
 	
+	IF (vehicle:HASKEY("pitchover") AND vehicle["pitchover"] > 0 ) {
 	
-	IF DEFINED pitchover AND pitchover <> 0 {
-		addMessage("PERFORMING PITCHOVER MANOEUVRE.").	
-		LOCAL pitchheading IS compass_for(SHIP:FACING:TOPVECTOR,SHIP:GEOPOSITION).
-		UNTIL FALSE {
-			getState().
-			local ttt is TIME:SECONDS - vehicle["ign_t"].
-			IF ttt >= 2 {                                    
-				SET control["steerdir"] TO up + r(arctan(sin(270-pitchheading)*tan(pitchover)),arctan(cos(270-pitchheading)*tan(pitchover)),ship:facing:roll).
-			}	
-			IF ttt >= 5 {
-				SET control["steerdir"] TO up + r(-arctan(sin(270-pitchheading)*tan(pitchover)),-arctan(cos(270-pitchheading)*tan(pitchover)),ship:facing:roll).
-				BREAK.
-			}
-			dataViz().
-			WAIT 0.
+		LOCAL pitchheading IS fixangle(compass_for(SHIP:FACING:TOPVECTOR,SHIP:GEOPOSITION) + 180).		
+		
+		LOCAL ship_topv IS SHIP:FACING:TOPVECTOR.
+		
+		LOCAL upv IS -SHIP:ORBIT:BODY:POSITION.
+		LOCAL headv IS VXCL(upv, V(0,1,0)).
+		SET headv TO rodrigues(headv, upv, pitchheading).
+		LOCAL normv IS VCRS(upv, headv).
+		LOCAL steerdirv IS rodrigues(upv, normv, vehicle["pitchover"]).
+		
+		WHEN SHIP:VERTICALSPEED > 2 THEN {
+			addMessage("PERFORMING PITCHOVER MANOEUVRE.").
+			SET control["steerdir"] TO LOOKDIRUP(steerdirv, ship_topv).
 		}
 	}
 	
