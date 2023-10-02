@@ -720,8 +720,6 @@ FUNCTION getState {
 	
 	LOCAL avg_thrust is vehiclestate["avg_thr"]:average().
 	LOCAL avg_isp is x[1].
-
-	IF NOT stg:HASKEY("tankparts") {get_stg_tanks_res(stg).}
 		
 	LOCAL m_old IS stg["m_initial"].
 
@@ -729,12 +727,11 @@ FUNCTION getState {
 	
 	LOCAL deltam IS m_old - stg["m_initial"].
 	
-	local res_left IS get_prop_mass(stg).
-	
-	SET vehiclestate["m_burn_left"] to res_left.
-	
 	IF NOT (vehiclestate["staging_in_progress"]) {
-		
+	
+		IF NOT stg:HASKEY("tankparts") {get_stg_tanks_res(stg).}
+		local res_left IS get_prop_mass(stg).
+		SET vehiclestate["m_burn_left"] to res_left.
 								 
 		IF (stg["staging"]["type"]="m_burn") {
 		
