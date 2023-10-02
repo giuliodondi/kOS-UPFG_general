@@ -120,7 +120,7 @@ declare function open_loop_ascent{
 	}
 
 	
-	LOCAL targetspeed IS 85 + ((45 - 90)/(1.5-1))*(vehiclestate["avg_thr"]:average()/(g0*vehicle["stages"][vehiclestate["cur_stg"]]["m_initial"]) - 1).	
+	LOCAL targetspeed IS pitch_program_tgt_speed().
 	
 	WHEN SHIP:VERTICALSPEED > targetspeed THEN { 
 		addMessage("PITCHING DOWNRANGE").

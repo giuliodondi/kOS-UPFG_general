@@ -291,6 +291,16 @@ FUNCTION set_vehicle_traj_steepness {
 }
 
 
+FUNCTION pitch_program_tgt_speed {
+
+	local stg IS get_stage().
+	
+	LOCAL twr IS stg["engines"]["thrust"]/stg["m_initial"].
+	return CLAMP(85 + ((45 - 90)/(1.5-1))*(twr - 1), 85, 50).	
+
+}
+
+
 //open-loop pitch profile for pre-UPFG
 FUNCTION pitch {
 	PARAMETER v_.
