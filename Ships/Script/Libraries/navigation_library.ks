@@ -37,6 +37,19 @@ FUNCTION surfacevel {
 	RETURN orbvel -  vcrs(BODY:angularvel, pos).
 }
 
+//converts position and velocity into vertical speed
+FUNCTION hdot {
+	PARAMETER vel.
+	PARAMETER pos.
+
+	RETURN VDOT(pos:NORMALIZED,vel).
+}
+
+
+//get gravitational acceleration
+FUNCTION bodygravacc {
+	RETURN BODY:MU/(BODY:RADIUS^2).
+}
 
 
 
@@ -403,7 +416,7 @@ function orbit_alt_eta {
 	
 	LOCAL eta_ IS (sma * (1 - ecc^2) / h - 1) / ecc.
 	
-	RETURN ARCCOS(eta_).
+	RETURN ARCCOS(limitarg(eta_)).
 }
 	
 //calculates fpa at given eta
@@ -571,6 +584,18 @@ FUNCTION targetLANvec {
 	PARAMETER tgtLAN.
 	
 	return rodrigues(SOLARPRIMEVECTOR, V(0,1,0), - tgtLAN).
+}
+
+FUNCTION targetPerivec {
+	PARAMETER tgtIncl.
+	PARAMETER tgtLAN.
+	PARAMETER tgtPeriarg.
+	
+	LOCAL lanvec IS targetLANvec(tgtLAN).
+	LOCAL normvec IS targetNormal(tgtIncl, tgtLAN).
+	
+	RETURN rodrigues(lanvec, normvec, -tgtPeriarg).
+
 }
 
 //orbital plane vector given inclination and lan 
