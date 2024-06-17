@@ -15,14 +15,6 @@ GLOBAL vehiclestate IS LEXICON(
 ).
 
 
-GLOBAL control Is LEXICON(
-	"launch_az",0,
-	"steerdir", LOOKDIRUP(SHIP:FACING:FOREVECTOR, SHIP:FACING:TOPVECTOR),
-	"roll_angle",0,
-	"refvec", v(0,0,0)
-).
-
-
 
 GLOBAL events IS LIST().
 
@@ -59,20 +51,8 @@ FUNCTION initialise_vehicle{
 			LOCAL X IS 1/0.
 		}
 		
-	
 	}
 	
-	
-	
-	
-	//local m_bias IS ship:mass.
-	//SET m_bias TO m_bias - vehicle["stages"][1]["m_initial"].
-	//IF m_bias<0.5 {
-	
-	//set m_bias to 0.
-	//}
-
-	//IF NOT vehicle:HASKEY("offaxis_thrust") {vehicle:ADD("offaxis_thrust",v(0,0,0)).}
 
 	LOCAL vehlen IS vehicle["stages"]:LENGTH.
 
@@ -132,7 +112,7 @@ FUNCTION initialise_vehicle{
 			LOCAL x IS glim_t_m(stg).
 
 			
-			If x[0] > 0 {
+			If (x[0] >= 0) {
 				//yes it will exceed the limit
 
 				IF stg:HASKEY("minThrottle") {
@@ -257,16 +237,13 @@ FUNCTION initialise_vehicle{
 	SET vehiclestate["m_burn_left"] TO vehicle["stages"][1]["m_burn"].
 	
 	vehicle:ADD("ign_t", 0).
+	vehicle:ADD("max_q_reached", FALSE).
 	
 	vehicle:ADD("traj_steepness", 0.9).	//placeholder
-
-	SET control["roll_angle"] TO vehicle["roll"].
 	
 	set_staging_trigger().
 	
-	PRINT " INITIALISATION COMPLETE" AT (0,3).
-	
-	//debug_vehicle().
+	debug_vehicle().
 }
 
 
@@ -302,7 +279,7 @@ FUNCTION pitch_program_tgt_speed {
 
 
 //open-loop pitch profile for pre-UPFG
-FUNCTION pitch {
+FUNCTION open_loop_pitch {
 	PARAMETER v_.
 	PARAMETER v0.			 
 	
@@ -344,43 +321,205 @@ FUNCTION pitch {
 
 
 
-//	Throttle controller
-FUNCTION throttleControl {
+function ascent_dap_factory {
 
-	local stg IS get_stage().
-	local throtval is stg["Throttle"].
-	
-	IF stg["mode"] = 2   {
-		SET throtval TO stg["throt_mult"]*SHIP:MASS*1000.
-		SET usc["lastthrot"] TO throtval.
-	}
-	
-	set stg["Throttle"] to throtval.
+	SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO 180.
+	SET STEERINGMANAGER:ROLLTS TO 8.
 
-	LOCAL minthrot IS 0.
-	IF stg:HASKEY("minThrottle") {
-		SET minthrot TO stg["minThrottle"].
-	}
+	LOCAL this IS lexicon().
 	
-	RETURN throtteValueConverter(throtval, minthrot).
-}
-
-
-//control individually the throttle value of engines 
-//using the nametag system and adjusting the throttle limit 
-
-FUNCTION engthrottle {
-	PARAMETER tagg.
-	PARAMETER throtval.
+	this:add("steer_mode", "").
+	this:add("thr_mode", "").		//ksp 0-1 throttle value
 	
-	LOCAL engtaglist IS  SHIP:PARTSTAGGED(tagg).
+	this:add("thr_cmd", 1).
 	
-	FOR eng IN engtaglist {
-		IF eng:ISTYPE("engine") {
-			SET eng:THRUSTLIMIT to throtval.
+	this:add("last_time", TIME:SECONDS).
+	
+	this:add("iteration_dt", 0).
+	
+	this:add("update_time",{
+		LOCAL old_t IS this:last_time.
+		SET this:last_time TO TIME:SECONDS.
+		SET this:iteration_dt TO this:last_time - old_t.
+	}).
+	
+	this:add("cur_dir", SHIP:FACINg).
+	this:add("cur_thrvec", v(0,0,0)).
+	
+	this:add("cur_steer_pitch", 0).
+	this:add("cur_steer_az", 0).
+	this:add("cur_steer_roll", 0).
+	
+	this:add("steer_pitch_delta", 0).
+	this:add("steer_yaw_delta", 0).
+	this:add("steer_roll_delta", 0).
+	
+	this:add("steer_dir", SHIP:FACINg).
+	
+	this:add("measure_refv_roll", {
+		LOCAL refv IS VXCL(this:steer_thrvec, this:steer_refv):NORMALIZED.
+		LOCAL topv IS VXCL(this:steer_thrvec, this:cur_dir:TOPVECTOR):NORMALIZED.
+		
+		
+		set this:cur_steer_roll to signed_angle(refv, topv, this:steer_thrvec, 1).
+	}).
+	
+	this:add("measure_cur_state", {
+		this:update_time().
+		
+		set this:cur_dir to ship:facing.
+		set this:cur_thrvec to thrust_vec().
+		
+		set this:cur_steer_az to get_az_lvlh(this:steer_dir).
+		set this:cur_steer_pitch to get_pitch_lvlh(this:steer_dir).
+		
+		this:measure_refv_roll().
+		
+		local tgtv_h is vxcl(this:steer_dir:topvector, this:steer_tgtdir:forevector):normalized.
+		local tgtv_v is vxcl(this:steer_dir:starvector, this:steer_tgtdir:forevector):normalized.
+		local tgttv_p is vxcl(this:steer_dir:forevector, this:steer_tgtdir:topvector):normalized.
+		
+		
+		set this:steer_pitch_delta to signed_angle(tgtv_v, this:steer_dir:forevector, this:steer_dir:starvector, 0).
+		set this:steer_yaw_delta to -signed_angle(tgtv_h, this:steer_dir:forevector, this:steer_dir:topvector, 0).
+		set this:steer_roll_delta to signed_angle(tgttv_p, this:steer_dir:topvector, this:steer_dir:forevector, 0).
+	}).
+	
+	
+	
+	this:add("max_steervec_corr", 5).
+	this:add("steer_refv", SHIP:FACINg:topvector).
+	this:add("steer_thrvec", SHIP:FACINg:forevector).
+	this:add("steer_roll", 0).
+	this:add("steer_cmd_roll", 0).
+	
+	this:add("steer_tgtdir", SHIP:FACINg).
+	
+	
+
+	
+	this:add("set_steer_tgt", {
+		parameter new_thrvec.
+		
+		set this:steer_thrvec to new_thrvec.
+		
+		//required for continuous pilot input across several funcion calls
+		LOCAL time_gain IS ABS(this:iteration_dt/0.2).
+		
+		local max_roll_corr is 13 * time_gain * STEERINGMANAGER:MAXSTOPPINGTIME.
+		
+		local roll_delta is unfixangle(this:cur_steer_roll - this:steer_roll).
+		set roll_delta to sign(roll_delta) * min(abs(roll_delta) ,max_roll_corr).
+		
+		set this:steer_cmd_roll to this:cur_steer_roll - roll_delta.
+		
+		set this:steer_tgtdir to aimAndRoll(this:steer_thrvec, this:steer_refv, this:steer_cmd_roll).
+	}).
+	
+	this:add("steer_auto_thrvec", {
+		set this:steer_mode to "auto_thrvec".
+		
+		this:measure_cur_state().
+	
+		local steer_err_tol is 0.5.
+	
+		local max_roll_corr is 20.
+		
+		local cur_steervec is this:cur_dir:forevector.
+		local tgt_steervec is this:steer_tgtdir:forevector.
+		
+		local steer_err is vang(cur_steervec, tgt_steervec).
+		
+		if (steer_err > steer_err_tol) {
+			local steerv_norm is vcrs(cur_steervec, tgt_steervec).
+			local steerv_corr is min(this:max_steervec_corr, steer_err).
+			
+			set tgt_steervec to rodrigues(cur_steervec, steerv_norm, steerv_corr).
+		} else {
+			set tgt_steervec to tgt_steervec.
 		}
-	}
+		
+		local cur_topvec is vxcl(tgt_steervec, this:cur_dir:topvector).
+		local tgt_topvec is vxcl(tgt_steervec, this:steer_tgtdir:topvector).
+		
+		//local roll_err is signed_angle(tgt_topvec, cur_topvec, tgt_steervec, 0).
+		//local roll_corr is sign(roll_err) * min(abs(roll_err) ,max_roll_corr).
+		//
+		//print "roll_corr " + roll_corr + " " at (0,20).
+		//
+		//set tgt_topvec to rodrigues(cur_topvec, tgt_steervec, -roll_corr).
+	
+		set this:steer_dir to LOOKDIRUP(tgt_steervec, tgt_topvec ).
+	}).
+	
+	
+	this:add("thr_tgt", 0).
+	this:add("thr_max", 1).	
+	this:add("thr_min", 0).	
+	
+	this:add("update_thr_cmd", {
+		
+	}).
+	
+	this:add("thr_control_auto", {
+		set this:thr_mode to "thr_auto".
+	
+		local new_thr is CLAMP(this:thr_tgt, this:thr_min, this:thr_max).
+		set this:thr_cmd to throtteValueConverter(new_thr, this:thr_min).
+	}).
+	
+	
+	this:add("print_debug",{
+		PARAMETER line.
+		
+		print "steer_mode : " + this:steer_mode + "    " at (0,line).
+		print "thr_mode : " + this:thr_mode + "    " at (0,line + 1).
+		
+		print "loop dt : " + round(this:iteration_dt(),3) + "    " at (0,line + 3).
+		
+		print "cur_steer_pitch : " + round(this:cur_steer_pitch,3) + "    " at (0,line + 5).
+		print "cur_steer_roll : " + round(this:cur_steer_roll,3) + "    " at (0,line + 6).
+		print "steer_cmd_roll : " + round(this:steer_cmd_roll,3) + "    " at (0,line + 7).
+		print "thr_tgt : " + round(this:thr_tgt,3) + "    " at (0,line + 8).
+		print "thr_cmd : " + round(this:thr_cmd,3) + "    " at (0,line + 9).
+		
+		print "steer_pitch_delta : " + round(this:steer_pitch_delta,3) + "    " at (0,line + 11).
+		print "steer_roll_delta : " + round(this:steer_roll_delta,3) + "    " at (0,line + 12).
+		print "steer_yaw_delta : " + round(this:steer_yaw_delta,3) + "    " at (0,line + 13).
+		print "throt_delta : " + round(this:throt_delta,3) + "    " at (0,line + 14).
+		
+	}).
+	
+	this:add("set_steering_ramp", {
+		local max_steer is 1.
+		local steer_ramp_rate is max_steer/5.
+		
+		SET STEERINGMANAGER:MAXSTOPPINGTIME TO min(max_steer, STEERINGMANAGER:MAXSTOPPINGTIME + steer_ramp_rate * this:iteration_dt).
+	}).
+	
+	this:add("set_steering_high", {
+		SET STEERINGMANAGER:MAXSTOPPINGTIME TO 1.5.
+	}).
+	
+	this:add("set_steering_low", {
+		SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.1.
+	}).
+	
+	this:add("set_rcs", {
+		PARAMETER on_.
+		
+		if (on_) {
+			RCS ON.
+		} else {
+			RCS OFF.
+		}
+	}).
+	
+	
+	
+	this:measure_cur_state().
 
+	return this.
 
 }
 
@@ -397,6 +536,7 @@ FUNCTION engthrottle {
 
 									//VEHICLE PERFORMANCE & STAGING FUNCTIONS
 
+// LEGACY , no longer used
 //simple function to check if vehicle is past maxq
 FUNCTION check_maxq {
 	PARAMETER newq.
@@ -493,85 +633,6 @@ FUNCTION get_mass_bias {
 		SET stg["m_final"] TO stg["m_final"] + m_bias.
 	}
 
-}
-
-//calculates burn time for a constant thrust stage 
-FUNCTION const_f_t {
-	PARAMETER stg.
-
-	LOCAL red_flow IS stg["engines"]["flow"] * stg["throttle"].
-	RETURN stg["m_burn"]/red_flow.	
-}
-
-
-//calculates when the g limit will be violated and the vehicle mass at that moment
-//returns (0,0) if the g-lim is never reached
-FUNCTION glim_t_m {
-	PARAMETER stg.
-	local out is LIST(0,0).
-	
-	local mbreak is stg["engines"]["thrust"] * stg["Throttle"]/(stg["glim"]*g0).
-	IF mbreak > stg["m_final"]  {
-		SET out[1] TO mbreak.
-		SET out[0] TO (stg["m_initial"] - mbreak)/(stg["engines"]["flow"] * stg["Throttle"]).
-	}
-	
-	RETURN out.
-}
-
-//given a constant g stage calculates the burn time until the lower throttle limit will be reached and the vehicle mass at that moment
-FUNCTION const_G_t_m {
-	PARAMETER stg.
-	local out is LIST(0,0).
-	
-	//calculate mass of the vehicle at throttle violation 
-	LOCAL mviol IS stg["engines"]["thrust"] * stg["minThrottle"]/( stg["glim"] * g0 ).
-	
-	//initialise final mass to stage final mass
-	LOCAL m_final IS stg["m_final"].
-	
-	IF mviol > m_final  {
-		SET out[1] TO mviol.
-		SET m_final TO mviol.
-	}
-	
-	local red_isp is stg["engines"]["isp"]/stg["glim"].
-		
-	//calculate burn time until we reach the final mass 
-	SET out[0] TO red_isp * LN( stg["m_initial"]/m_final ).
-		
-	RETURN out.
-}
-
-
-//calculates new stage burn time  as a sum of constant g burn time
-//and constant t burn time at minimum throttle
-FUNCTION glim_stg_time {
-	PARAMETER stg_lex.
-	
-	local glim is stg_lex["glim"].
-	LOCAL tt Is 0.
-	
-	//compute burn time until  we deplete the stage.	
-	
-	LOCAL maxtime IS (stg_lex["engines"]["isp"]/glim) * LN(1 + stg_lex["m_burn"]/stg_lex["m_final"] ).
-
-	//compute burn time until  we reach minimum throttle.	
-	LOCAL limtime IS - stg_lex["engines"]["isp"]/glim * LN(stg_lex["minThrottle"]).
-	LOCAL constThrustTime IS 0.
-	IF limtime < maxtime {
-		//	First we calculate mass of the fuel burned until violation
-		LOCAL burnedFuel IS stg_lex["m_initial"]*(1 - CONSTANT:E^(-glim*limtime/stg_lex["engines"]["isp"])).
-		//	Then, time it will take to burn the rest on constant minimum throttle
-		SET constThrustTime TO (stg_lex["m_burn"] - burnedFuel  )/(stg_lex["minThrottle"]*stg_lex["engines"]["flow"]).
-		SET tt TO limtime + constThrustTime.
-	}
-	ELSE {
-		SET tt TO maxtime.
-	}
-	SET stg_lex["throt_mult"] TO glim*g0/stg_lex["engines"]["thrust"].
-	
-	RETURN tt.								
 }
 
 
@@ -705,12 +766,8 @@ FUNCTION get_prop_mass {
 //measures everything about the current state of the vehicle, including instantaneous thrust
 //thrust only averaged over if staging is not in progress
 FUNCTION getState {
-
-	LOCAL deltat IS surfacestate["MET"].
 	
 	update_navigation().
-	
-	SET deltat TO surfacestate["MET"] - deltat.
 	
 	IF (surfacestate:HASKEY("q")  AND surfacestate["vs"] > 50 ) {
 		check_maxq(SHIP:Q).
@@ -812,25 +869,21 @@ FUNCTION getState {
 //Staging function.
 FUNCTION STAGING{
 	
-	local stg_staginginfo IS vehicle["stages"][vehiclestate["cur_stg"]]["staging"]["type"].
-	
-	local flameout IS (stg_staginginfo="depletion").
-	
-	IF flameout {
+	IF (vehicle["stages"][vehiclestate["cur_stg"]]["staging"]["type"]="depletion") {
 		SET vehiclestate["staging_in_progress"] TO TRUE.
 		SET P_steer TO "kill".
 	}
 	
 	addMessage("CLOSE TO STAGING").
-	SET vehiclestate["staging_time"] TO TIME:SECONDS+100.		//bias of 100 seconds to avoid premature triggering of the staging actions
+	SET vehiclestate["staging_time"] TO surfacestate["time"]+100.		//bias of 100 seconds to avoid premature triggering of the staging actions
 	
 	
 	
 
-	WHEN (flameout AND maxthrust=0) or ((NOT flameout) AND vehicle["stages"][vehiclestate["cur_stg"]]["Tstage"] <=0.0005 ) THEN {	
+	WHEN (flameout AND maxthrust=0) or ((NOT flameout) AND vehicle["stages"][vehiclestate["cur_stg"]]["Tstage"] <=0.01 ) THEN {	
 		SET vehiclestate["staging_in_progress"] TO TRUE.
 		addMessage("STAGING").
-		SET vehiclestate["staging_time"] TO TIME:SECONDS.
+		SET vehiclestate["staging_time"] TO surfacestate["time"].
 		IF (vehicle["stages"][vehiclestate["cur_stg"]]["staging"]["type"]="depletion") {set vehiclestate["staging_time"] to vehiclestate["staging_time"] + 1.5 .}
 	}
 	
@@ -840,12 +893,12 @@ FUNCTION STAGING{
 		SET stagingaction TO vehicle["stages"][vehiclestate["cur_stg"]+1]["staging"]["stg_action"].
 	}
 	
-	WHEN TIME:SECONDS > vehiclestate["staging_time"] THEN {
+	WHEN (surfacestate["time"] > vehiclestate["staging_time"]) THEN {
 		staging_reset(stagingaction).	
 	}
 	
 	IF vehicle["stages"][vehiclestate["cur_stg"]+1]["staging"]["ignition"]=TRUE {
-		WHEN TIME:SECONDS > (vehiclestate["staging_time"] + vehicle["stages"][vehiclestate["cur_stg"]]["staging"]["ullage_t"]) THEN { 
+		WHEN (surfacestate["time"] > (vehiclestate["staging_time"] + vehicle["stages"][vehiclestate["cur_stg"]]["staging"]["ullage_t"])) THEN { 
 			wait until stage:ready.
 			
 			STAGE.
@@ -858,7 +911,7 @@ FUNCTION STAGING{
 		}
 	}
 	ELSE {
-		WHEN TIME:SECONDS > vehiclestate["staging_time"] + 0.5 THEN {
+		WHEN (surfacestate["time"] > vehiclestate["staging_time"] + 0.5) THEN {
 			addMessage("STAGING SEQUENCE COMPLETE").
 			SET vehiclestate["staging_in_progress"] TO FALSE.
 		}
@@ -894,13 +947,12 @@ FUNCTION staging_reset {
 		
 	SET vehiclestate["cur_stg"] TO vehiclestate["cur_stg"]+1.
 	local stg is get_stage().
-	SET stg["ign_t"] TO TIME:SECONDS.
+	SET stg["ign_t"] TO surfacestate["time"].
 	
 	vehiclestate["avg_thr"]:reset().
 	
 	SET vehiclestate["m_burn_left"] TO stg["m_burn"].
 	handle_ullage(stg).
-	set_staging_trigger().
 	IF vehiclestate["ops_mode"]=2 {SET usc["lastthrot"] TO stg["Throttle"].	}
 }
 
@@ -932,4 +984,12 @@ FUNCTION decrease_mass {
 	SET stg["Tstage"] TO stg["Tstage"] - dt.
 } 
 	
+	
+	
+FUNCTION shutdown_all_engines {
+	LIST ENGINES IN all_eng.
+	FOR e IN all_eng {
+		e:shutdown.
+	}	
+}
 

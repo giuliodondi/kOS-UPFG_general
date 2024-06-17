@@ -25,6 +25,44 @@ function launch{
 	
 	prepare_telemetry().
 	
+	GLOBAL dap IS ascent_dap_factory().
+	
+	GLOBAL dap_gui_executor IS loop_executor_factory(
+												0.15,
+												{
+													//protection
+													if (SAS) {
+														SAS OFF.
+													}
+													
+													local cur_stg is get_stage().
+													
+													set dap:thr_max to 1.
+													set dap:thr_min to cur_stg["minThrottle"].
+													
+													dap:steer_auto_thrvec().
+													dap:thr_control_auto().
+													
+													set cur_stg["Throttle"] to dap:thr_tgt.
+													
+													if (dap_debug) {
+														//clearscreen.
+														clearvecdraws().
+														
+														dap:print_debug(2).
+														
+														arrow_ship(3 * dap:steer_thrvec,"steer_thrvec").
+														arrow_ship(2 * dap:steer_dir:forevector,"forevec").
+														arrow_ship(2 * dap:steer_dir:topvector,"topvec").
+													
+													}
+													
+													dataViz().
+												}
+	).
+	
+	drawUI().
+	
 	countdown().
 	open_loop_ascent().
 	closed_loop_ascent().
@@ -34,33 +72,50 @@ function launch{
 
 
 declare function countdown{
+
+//needed to update the dap at least once
+	wait 0.
 	
-	LOCK THROTTLE to throttleControl().
 	SAS OFF.
-	local line is 30.
-	print " COUNTDOWN:" AT (0,line).
-	
-	//this sets the pilot throttle command to some value so that it's not zero if the program is aborted
-	SET SHIP:CONTROL:PILOTMAINTHROTTLE TO vehicle["stages"][vehiclestate["cur_stg"]]["Throttle"].
+
+	set dap:steer_refv to HEADING(target_orbit["launch_az"] + 180, 0):VECTOR.	
+	dap:set_steering_low().
+	set dap:steer_roll to vehicle["roll"].
 	
 	local TT IS TIME:SECONDS + 10 - vehicle["preburn"].
 	WHEN  TIME:SECONDS>=TT  THEN {
 			set line TO line + 2.
-			print " IGNITION SEQUENCE START." at (0,line).
+			addMessage("IGNITION SEQUENCE START").
 			stage.	
 		}
-	from { LOCAL i IS 10.} until i = 0 step{ SET i TO i-1.} do{
 		
-		set line TO line + 2.
-		print " T MINUS "+ i at (0,line).
-		wait 1.
-	}	
+	addMessage("T MINUS 10").
+	
+	
+	UNTIL (	TIME:SECONDS >= vehicle["ign_t"] ) {
+		SET SHIP:CONTROL:PILOTMAINTHROTTLE TO dap:thr_cmd.
+		wait 0.1.
+	}
 	
 	SET surfacestate["MET"] TO TIME:SECONDS. 
 	SET vehicle["ign_t"] TO TIME:SECONDS. 
-	LOCK STEERING TO control["steerdir"].
+	IF (vehicle["handover"]:HASKEY("time")) {
+		SET vehicle["handover"]["time"] to vehicle["ign_t"] + vehicle["handover"]["time"].
+	}
+	
+	LOCK STEERING TO dap:steer_dir.
+	
 	stage.	
-	wait until ship:unpacked and ship:loaded.
+	
+	until false {
+		wait 0.	
+		if (SHIP:VERTICALSPEED > 1) {break.}
+	}
+	
+	addMessage("LIFT-OFF CONFIRMED").
+	
+	SET vehiclestate["ops_mode"] TO 1.
+	wait 0.
 		
 }
 
@@ -68,93 +123,54 @@ declare function countdown{
 
 declare function open_loop_ascent{
 
-	SET STEERINGMANAGER:ROLLCONTROLANGLERANGE TO 180.
-	SET STEERINGMANAGER:ROLLTS TO 8.
-	
-	SET vehiclestate["ops_mode"] TO 1.
-	
-	drawUI().
-	
 	get_mass_bias().
 	getState().
+
+	local steer_flag IS false.																	   
 	
-	WHEN SHIP:VERTICALSPEED > 1 THEN {
-		addMessage("LIFT-OFF!").
-	}
-	
-	//leave this here for debugging
-	//until false {print vehicle["stages"].}
-		
-	IF (vehicle["handover"]:HASKEY("time")) {
-		SET vehicle["handover"]["time"] to vehicle["ign_t"] + vehicle["handover"]["time"].
-	}
-	SET control["steerdir"] TO LOOKDIRUP(-SHIP:ORBIT:BODY:POSITION, SHIP:FACING:TOPVECTOR).
-	
-	IF (vehicle:HASKEY("pitchover") AND vehicle["pitchover"] > 0 ) {
-	
-		LOCAL pitchheading IS fixangle(compass_for(SHIP:FACING:TOPVECTOR,SHIP:GEOPOSITION) + 180).		
-		
-		LOCAL ship_topv IS SHIP:FACING:TOPVECTOR.
-		
-		LOCAL upv IS -SHIP:ORBIT:BODY:POSITION.
-		LOCAL headv IS VXCL(upv, V(0,1,0)).
-		SET headv TO rodrigues(headv, upv, pitchheading).
-		LOCAL normv IS VCRS(upv, headv).
-		LOCAL steerdirv IS rodrigues(upv, normv, vehicle["pitchover"]).
-		
-		WHEN SHIP:VERTICALSPEED > 2 THEN {
-			addMessage("PERFORMING PITCHOVER MANOEUVRE.").
-			SET control["steerdir"] TO LOOKDIRUP(steerdirv, ship_topv).
-		}
-	}
-	
-	local steer_flag IS false.
-	
-	SET control["refvec"] TO HEADING(control["launch_az"] + 180, 0):VECTOR.																		   
-	
-	getState().
-	
-	WHEN SHIP:VERTICALSPEED > 40 THEN {
+	WHEN (surfacestate["vs"] > 40) THEN {
 		addMessage("BEGINNING ROLL PROGRAM").	
 		SET steer_flag TO true.
 	}
-
 	
 	LOCAL targetspeed IS pitch_program_tgt_speed().
 	
-	WHEN SHIP:VERTICALSPEED > targetspeed THEN { 
+	WHEN (surfacestate["vs"] > targetspeed) THEN { 
 		addMessage("PITCHING DOWNRANGE").
 	}
-	
 	
 	
 	UNTIL FALSE {	
 		getState().
 		
 		IF (vehicle["handover"]:HASKEY("time")) {
-			IF TIME:SECONDS >= (vehicle["handover"]["time"] ) {BREAK.}
+			IF (surfacestate["time"] >= vehicle["handover"]["time"]) {BREAK.}
 		}
 		ELSE {
 			IF vehiclestate["cur_stg"]=vehicle["handover"]["stage"] {
-				vehicle["handover"]:ADD("time", TIME:SECONDS + 5 ).
+				vehicle["handover"]:ADD("time", surfacestate["time"] + 5 ).
 				vehicle["handover"]:REMOVE("stage").
 			}
 		}
 		
-		local aimVec is HEADING(
-								control["launch_az"],
-								pitch(SHIP:VELOCITY:SURFACE:MAG,targetspeed)
-		):VECTOR.
+		if (NOT vehicle["max_q_reached"]) {
+			IF (surfacestate["vs"] <= 100 ) or (surfacestate["q"] >=  surfacestate["maxq"] ) {
+				SET surfacestate["maxq"] TO surfacestate["q"].
+				set vehicle["max_q_reached"] to FALSE.
+			} else {
+				addMessage("VEHICLE HAS REACHED MAX-Q").
+				set vehicle["max_q_reached"] to TRUE.
+			}
+		}
+		
+		local aimVec is HEADING(target_orbit["launch_az"],open_loop_pitch(SHIP:VELOCITY:SURFACE:MAG)):VECTOR.
 
 		
 		IF steer_flag AND (NOT vehiclestate["staging_in_progress"]) { 
-			set control["steerdir"] TO aimAndRoll(aimVec, control["refvec"], control["roll_angle"]). 
-		} ELSE {
-			SET control["steerdir"] TO "kill".
+			dap:set_steering_ramp().
+			dap:set_steer_tgt(aimVec).
 		}
 		
-		dataViz().
-		WAIT 0.
 	}
 	
 }
@@ -162,27 +178,19 @@ declare function open_loop_ascent{
 
 declare function closed_loop_ascent{
 	
-	SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.2.
-	
 	SET vehiclestate["ops_mode"] TO 2.
-	IF HASTARGET = TRUE AND (TARGET:BODY = SHIP:BODY) {
-		//hard-coded time shift of 5 minutes
-		SET target_orbit TO tgt_j2_timefor(target_orbit,300).
-	}													 
-	SET control["refvec"] TO -SHIP:ORBIT:BODY:POSITION:NORMALIZED.
+	
+	dap:set_steering_low().
+	
+	set dap:steer_refv to -SHIP:ORBIT:BODY:POSITION:NORMALIZED.
+	
+	SET target_orbit["normal"] TO upfg_normal(target_orbit["inclination"], target_orbit["LAN"]).
+	
 	
 	addMessage("RUNNING UPFG ALGORITHM").
+	
 	drawUI().
 	getState().
-	SET target_orbit["normal"] TO targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
-	LOCAL x IS setupUPFG(target_orbit).
-	GLOBAL upfgInternal IS x[0].
-	GLOBAL usc IS x[1].
-	
-	SET usc["lastvec"] TO vecYZ(SHIP:FACING:FOREVECTOR).
-	SET usc["lastthrot"] TO vehicle["stages"][vehiclestate["cur_stg"]]["Throttle"].
-
-	dataViz().
 
 	UNTIL FALSE{
 		IF usc["itercount"]=0 { //detects first pass or convergence lost

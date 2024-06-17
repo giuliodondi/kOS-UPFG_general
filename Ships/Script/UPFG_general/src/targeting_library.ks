@@ -1,8 +1,26 @@
 //GLOBAL NAV VARIABLES 
 
 GLOBAL launchpad IS SHIP:GEOPOSITION.
-GLOBAL surfacestate IS  LEXICON("MET",0,"az",0,"pitch",0,"alt",0,"vs",0,"hs",0,"vdir",0,"hdir",0,"q",0).
-GLOBAL orbitstate IS  LEXICON("radius",0,"velocity",0). 
+GLOBAL surfacestate IS  LEXICON(
+								"time",0,
+								"deltat", 0,
+								"MET",0,
+								"surfv", v(0,0,0),
+								"az",0,
+								"pitch",0,
+								"alt",0,
+								"vs",0,
+								"hs",0,
+								"vdir",0,
+								"hdir",0,
+								"q",0, 
+								"maxq", 0
+).
+
+GLOBAL orbitstate IS  LEXICON(
+								"radius",v(0,0,0),
+								"velocity",v(0,0,0)
+). 
 
 
 
@@ -509,31 +527,28 @@ declare function planetary_flyby {
 
 
 FUNCTION warp_window{
-	parameter liftofftime.
+	parameter warp_dt.
 	
-	LOCAL timetolaunch IS liftofftime - TIME:SECONDS.
+	LOCAL launch_time IS TIME:SECONDS + warp_dt.
+	addMessage("TIME TO WINDOW : " + sectotime(warp_dt)).
 
 	UNTIL FALSE {
 	
-		LOCAL timetolaunch IS liftofftime - TIME:SECONDS.
+		LOCAL timetolaunch IS launch_time - TIME:SECONDS.
 		
 		warp_controller(timetolaunch, TRUE, 2).
 		
 		IF (timetolaunch <=0.1) {BREAK.}
-		
-		PRINT "                                                               " at (1,23).
-		PRINT "	TIME TO WINDOW : " + sectotime(timetolaunch) at (1,23).
 		
 		Wait 0.
 	}
 	set warp to 0.
 }
 
+
 // calculate target orbital parameters 
 //calculate launch azimuth and window and handle warp 
 FUNCTION prepare_launch {
-
-	PRINT " PREPARING TO LAUNCH " AT (0,5).
 
 	clearvecdraws().
 
@@ -546,11 +561,11 @@ FUNCTION prepare_launch {
 	target_orbit:ADD("velocity", 0).
 	target_orbit:ADD("normal", V(0,0,0)).
 	target_orbit:ADD("fpa", 0).
+	target_orbit:ADD("launch_az", 0).
+	target_orbit:ADD("warp_dt", 0).
 	target_orbit:ADD("mode", 1).
 	
 	//first compute in-plane orbital parameters
-	
-	PRINT " COMPUTING IN-PLANE TARGET ORBITAL PARAMETERS" AT (0,7).
 	
 	//check altitudes
 	
@@ -577,8 +592,6 @@ FUNCTION prepare_launch {
 	
 	//compute cutoff orbital parameters
 	
-	PRINT " COMPUTING CUTOFF PARAMETERS" AT (0,13).
-	
 	SET target_orbit["eta"] TO orbit_alt_eta(cutoff_r, target_orbit["sma"], target_orbit["ecc"]).
 	set target_orbit["velocity"] to orbit_alt_vel(cutoff_r, target_orbit["sma"]).
 	
@@ -586,8 +599,6 @@ FUNCTION prepare_launch {
 
 
 	// now compute orbital plane
-	
-	PRINT " COMPUTING TARGET ORBITAL PLANE" AT (0,13).
 
 	// check inclination 
 	//overridden in case of targeted launch
@@ -629,15 +640,18 @@ FUNCTION prepare_launch {
 		
 		LOCAL dlng IS get_a_bBB(SHIP:GEOPOSITION:LAT, target_orbit["inclination"]).
 		
-		LOCAL north_launch_vec IS rodrigues(SOLARPRIMEVECTOR, V(0,1,0), -(target_orbit["LAN"] + dlng)).
+		LOCAL north_launch_vec IS rodrigues(SOLARPRIMEVECTOR, V(0,1,0), -(target_orbit["LAN"] - dlng)).
 		LOCAL south_launch_vec IS rodrigues(SOLARPRIMEVECTOR, V(0,1,0), -(target_orbit["LAN"] + 180 - dlng)).
-		
+
 		//arrow_body(north_launch_vec, "north").
 		//arrow_body(south_launch_vec, "south").
 		//arrow_body(shiplngvec, "ship").
 		
-		LOCAL north_dlan IS signed_angle(north_launch_vec, shiplngvec, V(0,1,0), 1).
-		LOCAL south_dlan IS signed_angle(south_launch_vec, shiplngvec, V(0,1,0), 1).
+		LOCAL north_dlan IS signed_angle(shiplngvec, north_launch_vec, V(0,1,0), 1).
+		LOCAL south_dlan IS signed_angle(shiplngvec, south_launch_vec, V(0,1,0), 1).
+		
+		//print " north_dlan " + north_dlan at (0,61).
+		//print " south_dlan " + south_dlan at (0,62).
 		
 		IF (south_dlan < north_dlan) {
 			SET target_orbit["direction"] TO "south". 
@@ -645,8 +659,6 @@ FUNCTION prepare_launch {
 			SET target_orbit["direction"] TO "north". 
 		}
 	}
-	
-	PRINT " CALCULATING TIME TO LAUNCH " AT (0,19).
 	
 	//time to window
 	LOCAL time2window IS orbitInterceptTime(target_orbit["inclination"], target_orbit["LAN"], (target_orbit["direction"]="south")).
@@ -678,23 +690,19 @@ FUNCTION prepare_launch {
 		SET time2window TO time2window + SHIP:BODY:ROTATIONPERIOD.
 	}
 	
-	LOCAL warp_time IS TIME:SECONDS + time2window  - vehicle_countdown.
+	set target_orbit["warp_dt"] to time2window  - vehicle_countdown.
 	
 	//this is for message logging
 	SET vehicle["ign_t"] TO TIME:SECONDS + time2window. 
 	
-	PRINT " CALCULATING LAUNCH AZIMUTH" AT (0,21).	
-	
-	set control["launch_az"] to launchAzimuth(target_orbit["inclination"], target_orbit["velocity"], (target_orbit["direction"]="south")).	
+	set target_orbit["launch_az"] to launchAzimuth(target_orbit["inclination"], target_orbit["velocity"], (target_orbit["direction"]="south")).	
 	
 	//print target_orbit:dump.
 	//arrow_body(targetLANvec(target_orbit["LAN"]), "lan").
 	//arrow_body(targetNormal(target_orbit["inclination"], target_orbit["LAN"]), "norm").
 	//until false{}
 		
-	warp_window(warp_time).	
-	
-	PRINT " COMPLETE. STARTING COUNTDOWN." AT (0,25).	
+	warp_window(target_orbit["warp_dt"]).	
 
 }
 
@@ -708,7 +716,10 @@ FUNCTION prepare_launch {
 
 FUNCTION update_navigation {
 	
-	SET surfacestate["MET"] TO TIME:SECONDS. 
+	local t_prev is surfacestate["time"].
+	SET surfacestate["time"] TO TIME:SECONDS.
+	set surfacestate["deltat"] to surfacestate["time"] - t_prev.
+	SET surfacestate["MET"] TO surfacestate["time"] - vehicle["ign_t"]. 
 	
 	
 	//measure position and orbit parameters
@@ -725,6 +736,7 @@ FUNCTION update_navigation {
 	SET surfacestate["alt"] TO SHIP:ALTITUDE.
 	SET surfacestate["vs"] TO SHIP:VERTICALSPEED.
 	SET surfacestate["hs"] TO SHIP:VELOCITY:SURFACE:MAG.
+	set surfacestate["q"] to SHIP:Q.
 	
 	SET orbitstate["velocity"] TO vecYZ(SHIP:ORBIT:VELOCITY:ORBIT).
 	SET orbitstate["radius"] TO vecYZ(SHIP:ORBIT:BODY:POSITION)*-1.
