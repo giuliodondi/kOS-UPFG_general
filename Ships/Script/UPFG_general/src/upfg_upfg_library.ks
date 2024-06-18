@@ -1,4 +1,3 @@
-SET CONFIG:IPU TO 1000.
 
 
 //conic state extrapolation function / gravity integrator
@@ -17,7 +16,8 @@ GLOBAL upfgInternal IS LEXICON(
 							"vgo", v(0,0,0),
 							"s_meco", FALSE,
 							"s_init", FALSE,
-							"s_conv", FALSE
+							"s_conv", FALSE,
+							"iter_conv", 0
 ).
 	
 	
@@ -84,7 +84,7 @@ FUNCTION upfg_normal {
 }
 
 FUNCTION resetUPFG {
-	addGUIMessage("RESETTING UPFG").
+	addMessage("RESETTING UPFG").
 	setupUPFG().
 }
 
@@ -405,7 +405,7 @@ FUNCTION upfg {
 	LOCAL dvgo IS 0.
 
 	//desired velocity
-	SET tgt_orb TO nominal_cutoff_params(tgt_orb, internal["rd"]).
+	SET tgt_orb TO cutoff_params(tgt_orb, internal["rd"]).
 	
 	IF (internal["s_plane"]) {
 		SET internal["iy"] TO -tgt_orb["normal"].
@@ -449,7 +449,7 @@ FUNCTION upfg {
 			} ELSE {
 				if (NOT internal["s_conv"]) {
 					//moved here from main executive
-					addGUIMessage("GUIDANCE CONVERGED IN " + internal["itercount"] + " ITERATIONS").
+					addMessage("GUIDANCE CONVERGED IN " + internal["itercount"] + " ITERATIONS").
 					SET internal["s_conv"] tO TRUE.
 					SET internal["iter_conv"] TO 0.
 				}

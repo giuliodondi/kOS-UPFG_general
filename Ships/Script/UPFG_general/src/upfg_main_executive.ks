@@ -1,24 +1,33 @@
-function launch{
+@LAZYGLOBAL OFF.
+CLEARSCREEN.
+SET CONFIG:IPU TO 1200.	
+global debug_mode is false.
+global dap_debug is false.
+
+//	Load libraries
+RUNPATH("0:/Libraries/misc_library").	
+RUNPATH("0:/Libraries/maths_library").	
+RUNPATH("0:/Libraries/navigation_library").	
+RUNPATH("0:/Libraries/vehicle_library").	
+
+RUNPATH("0:/UPFG_general/src/upfg_interface_library").
+RUNPATH("0:/UPFG_general/src/upfg_targeting_library").
+RUNPATH("0:/UPFG_general/src/upfg_upfg_library").
+RUNPATH("0:/UPFG_general/src/upfg_vehicle_library").
+
+//	Load vessel file
+IF (vesselfilename:ENDSWITH(".ks")=TRUE) {
+	SET vesselfilename TO vesselfilename:REMOVE( vesselfilename:FIND(".ks") ,3 ).
+}
+RUNPATH("0:/UPFG_general/VESSELS/" + vesselfilename + ".ks").
+
+wait until ship:unpacked and ship:loaded.
+
+
+function upfg_main_exec{
 	CLEARSCREEN.
 	
-	//	Load libraries
-	RUNPATH("0:/Libraries/misc_library").	
-	RUNPATH("0:/Libraries/maths_library").	
-	RUNPATH("0:/Libraries/navigation_library").	
-	RUNPATH("0:/Libraries/vehicle_library").	
 	
-	RUNPATH("0:/UPFG_general/src/interface_library").
-	RUNPATH("0:/UPFG_general/src/targeting_library").
-	RUNPATH("0:/UPFG_general/src/upfg_library").
-	RUNPATH("0:/UPFG_general/src/vehicle_library").
-	
-	//	Load vessel file
-	IF (vesselfilename:ENDSWITH(".ks")=TRUE) {
-		SET vesselfilename TO vesselfilename:REMOVE( vesselfilename:FIND(".ks") ,3 ).
-	}
-	RUNPATH("0:/UPFG_general/VESSELS/" + vesselfilename + ".ks").
-	
-	wait until ship:unpacked and ship:loaded.
 	
 	initialise_vehicle().
 	prepare_launch().
@@ -38,7 +47,11 @@ function launch{
 													local cur_stg is get_stage().
 													
 													set dap:thr_max to 1.
-													set dap:thr_min to cur_stg["minThrottle"].
+													if (cur_stg["engines"]:HASKEY("minThrottle")) {
+														set dap:thr_min to cur_stg["engines"]["minThrottle"].
+													} else {
+														set dap:thr_min to 1.
+													}
 													
 													dap:steer_auto_thrvec().
 													dap:thr_control_auto().
@@ -46,7 +59,7 @@ function launch{
 													set cur_stg["Throttle"] to dap:thr_tgt.
 													
 													if (dap_debug) {
-														//clearscreen.
+														clearscreen.
 														clearvecdraws().
 														
 														dap:print_debug(2).
@@ -55,9 +68,11 @@ function launch{
 														arrow_ship(2 * dap:steer_dir:forevector,"forevec").
 														arrow_ship(2 * dap:steer_dir:topvector,"topvec").
 													
+													} else {
+														dataViz().
 													}
 													
-													dataViz().
+													
 												}
 	).
 	
@@ -66,6 +81,7 @@ function launch{
 	countdown().
 	open_loop_ascent().
 	closed_loop_ascent().
+	post_meco_actions().
 	
 }
 
@@ -78,13 +94,13 @@ declare function countdown{
 	
 	SAS OFF.
 
+	SET dap:thr_tgt TO 1.
 	set dap:steer_refv to HEADING(target_orbit["launch_az"] + 180, 0):VECTOR.	
 	dap:set_steering_low().
 	set dap:steer_roll to vehicle["roll"].
 	
 	local TT IS TIME:SECONDS + 10 - vehicle["preburn"].
 	WHEN  TIME:SECONDS>=TT  THEN {
-			set line TO line + 2.
 			addMessage("IGNITION SEQUENCE START").
 			stage.	
 		}
@@ -97,15 +113,14 @@ declare function countdown{
 		wait 0.1.
 	}
 	
-	SET surfacestate["MET"] TO TIME:SECONDS. 
+	LOCK STEERING TO dap:steer_dir.
+	
+	stage.	
+	SET surfacestate["time"] TO TIME:SECONDS. 
 	SET vehicle["ign_t"] TO TIME:SECONDS. 
 	IF (vehicle["handover"]:HASKEY("time")) {
 		SET vehicle["handover"]["time"] to vehicle["ign_t"] + vehicle["handover"]["time"].
 	}
-	
-	LOCK STEERING TO dap:steer_dir.
-	
-	stage.	
 	
 	until false {
 		wait 0.	
@@ -121,7 +136,7 @@ declare function countdown{
 
 
 
-declare function open_loop_ascent{
+function open_loop_ascent{
 
 	get_mass_bias().
 	getState().
@@ -163,7 +178,7 @@ declare function open_loop_ascent{
 			}
 		}
 		
-		local aimVec is HEADING(target_orbit["launch_az"],open_loop_pitch(SHIP:VELOCITY:SURFACE:MAG)):VECTOR.
+		local aimVec is HEADING(target_orbit["launch_az"],open_loop_pitch(SHIP:VELOCITY:SURFACE:MAG, targetspeed)):VECTOR.
 
 		
 		IF steer_flag AND (NOT vehiclestate["staging_in_progress"]) { 
@@ -176,7 +191,7 @@ declare function open_loop_ascent{
 }
 
 
-declare function closed_loop_ascent{
+function closed_loop_ascent{
 	
 	SET vehiclestate["ops_mode"] TO 2.
 	
@@ -189,86 +204,89 @@ declare function closed_loop_ascent{
 	
 	addMessage("RUNNING UPFG ALGORITHM").
 	
+	setupUPFG().
+	
 	drawUI().
 	getState().
 
 	UNTIL FALSE{
-		IF usc["itercount"]=0 { //detects first pass or convergence lost
-			WHEN usc["conv"]=1 THEN {
-				addMessage("GUIDANCE CONVERGED IN " + usc["itercount"] + " ITERATIONS").
-			}
-		}														  
-		
-		IF (usc["terminal"]=TRUE) { 
-			IF maxthrust=0 {BREAK.}
-		} 
-		ELSE {																					  
-			IF (usc["conv"]=1 AND (upfgInternal["tgo"] < upfgFinalizationTime AND SHIP:VELOCITY:ORBIT:MAG>= 0.9*target_orbit["velocity"])) OR (SHIP:VELOCITY:ORBIT:MAG>= 0.995*target_orbit["velocity"]) {
-				addMessage("TERMINAL GUIDANCE").
-				BREAK.
-			}
-			
-			IF HASTARGET = TRUE AND (TARGET:BODY = SHIP:BODY) {
-				SET target_orbit TO tgt_j2_timefor(target_orbit,upfgInternal["tgo"]).
-			}															 
-		}
 		
 		getState().
 		
-		SET upfgInternal TO upfg_wrapper(upfgInternal).
+		if (vehicle["low_level"]) {
+			addGUIMessage("LOW LEVEL").
+			BREAK.
+		}
 		
-		IF NOT vehiclestate["staging_in_progress"] {
-			SET control["steerdir"] TO aimAndRoll(vecYZ(usc["lastvec"]):NORMALIZED, control["refvec"], control["roll_angle"]).		
+		if (upfgInternal["s_meco"]) {
+			addGUIMessage("TERMINAL GUIDANCE").
+			BREAK.
+		}	
+		
+		IF HASTARGET = TRUE AND (TARGET:BODY = SHIP:BODY) {
+			tgt_j2_timefor(target_orbit, upfgInternal["tgo"]).
+		}
+		
+		upfg_sense_current_state(upfgInternal).
+		
+		upfg(
+			vehicle["stages"]:SUBLIST(vehiclestate["cur_stg"],vehicle:LENGTH-vehiclestate["cur_stg"]),
+			target_orbit,
+			upfgInternal
+		).
+		
+		IF (upfgInternal["s_conv"] AND NOT vehiclestate["staging_in_progress"]) {
+			dap:set_steer_tgt(vecYZ(upfgInternal["steering"])).
+			set dap:thr_tgt to upfgInternal["throtset"].	
+		}
+		
+		if (debug_mode) {
+			clearvecdraws().
+			arrow_ship(vecyz(upfgInternal["steering"]),"steer").
+			arrow_ship(vecyz(upfgInternal["ix"]),"ix").
+			arrow_ship(vecyz(upfgInternal["iy"]),"iy").
+			arrow_ship(vecyz(upfgInternal["iz"]),"iz").
 			
-		} ELSE {
-			SET control["steerdir"] TO "kill".
-		}		
-		
-		SET vehicle["stages"][vehiclestate["cur_stg"]]["Throttle"] TO usc["lastthrot"].		
-		
-		dataViz().
-		WAIT 0.
+			arrow_body(vecyz(vxcl(upfgInternal["iy"], upfgInternal["r_cur"])),"r_proj").
+			arrow_body(vecyz(upfgInternal["rd"]),"rd").
+			arrow_body(vecyz(target_orbit["normal"]),"rd").
+		}
 	}
 	
 	SET vehiclestate["ops_mode"] TO 3.
-	SET usc["terminal"] TO TRUE.
 	
 	//put terminal logic in its own block
 	addMessage("WAITING FOR MECO").
 	
 	UNTIL FALSE {
 		getState().
-		IF (SHIP:VELOCITY:ORBIT:MAG >= target_orbit["velocity"]) {
-			LOCK STEERING TO "kill".
-			LOCK THROTTLE to 0.
-			SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.
-			LIST ENGINES IN Eng.
-			FOR E IN Eng {IF e:ISTYPE("engine") {E:SHUTDOWN.}}
+		IF (SHIP:VELOCITY:ORBIT:MAG >= target_orbit["velocity"] OR engine_flameout()) {
 			BREAK.
 		}
-		dataViz().
 	}
 	
 	//just in case it hasn't been done previously
 	LOCK THROTTLE to 0.
-	LIST ENGINES IN Eng.
-	FOR E IN Eng {IF e:ISTYPE("engine") {E:SHUTDOWN.}}
+	SET SHIP:CONTROL:PILOTMAINTHROTTLE TO 0.
+	
+	shutdown_all_engines().
+}
+
+function post_meco_actions {
+	SET vehiclestate["staging_in_progress"] TO TRUE.	//so that vehicle perf calculations are skipped in getState
 	
 	SET vehiclestate["ops_mode"] TO 4.
 	UNLOCK THROTTLE.
 	UNLOCK STEERING.
 	SET SHIP:CONTROL:NEUTRALIZE TO TRUE.
-	
-	SET vehiclestate["staging_in_progress"] TO TRUE.	//so that vehicle perf calculations are skipped in getState
-	
+
 	drawUI().
-	UNTIL AG9 {
-		getState().
-		dataViz().
-		WAIT 0.
-	}
-		
+	getState().
+	dataViz().
+	
+	WAIT 5.
+	
+	dap_gui_executor["stop_execution"]().
 }
 
-
-launch().
+upfg_main_exec().

@@ -25,6 +25,11 @@ GLOBAL orbitstate IS  LEXICON(
 
 
 
+// normal vector of the current instantaneous orbital plane
+//it's opposite of upfg normal vector convention 
+FUNCTION currentNormal{
+	RETURN VCRS(orbitstate["radius"],orbitstate["velocity"]):NORMALIZED.
+}
 
 
 FUNCTION cutoff_params {
@@ -43,6 +48,22 @@ FUNCTION cutoff_params {
 	set tgt_orb["fpa"] to orbit_eta_fpa(tgt_orb["eta"], tgt_orb["SMA"], tgt_orb["ecc"]).
 
 	RETURN tgt_orb.
+}
+
+//upfg-compatible velocity vector
+//expects normal vector as the left-handed product of position and velocity
+function cutoff_velocity_vector {
+	parameter cutoff_r.
+	parameter normvec.
+	parameter cutoff_vel.
+	parameter cutoff_fpa.
+	
+	local ix_ is cutoff_r:normalized.
+	local iy_ is normvec:normalized.
+	local iz_ is VCRS(ix_, iy_):NORMALIZED.
+	
+	return rodrigues(iz_, iy_, cutoff_fpa):NORMALIZED * cutoff_vel.	
+
 }
 
 

@@ -1,28 +1,26 @@
 GLOBAL terminalwidth IS 65.
 GLOBAL terminalheight IS 59.
+GLOBAL terminalMsgs IS LIST().
 
 SET TERMINAL:WIDTH TO terminalwidth.
 SET TERMINAL:HEIGHT TO terminalheight.
 
 FUNCTION addMessage {
-	DECLARE PARAMETER msg.
+	PARAMETER msg.
 	LOCAL tt IS TIME:SECONDS.
-	LOCAL ttl IS 4.
+	LOCAL ttl IS 5.
 
-	IF NOT( DEFINED P_vizMsg ) {
-		GLOBAL P_vizMsg IS LIST().
-	}
 	local rem_list IS LIST().
-	FROM {LOCAL k IS 0.} UNTIL k = P_vizMsg:LENGTH  STEP { SET k TO k+1.} DO{
-		IF tt >= P_vizMsg[k]["ttl"] {
+	FROM {LOCAL k IS 0.} UNTIL k = terminalMsgs:LENGTH  STEP { SET k TO k+1.} DO{
+		IF tt >= terminalMsgs[k]["ttl"] {
 			rem_list:ADD(k).
 		}
 	}
 	FROM {LOCAL k IS rem_list:LENGTH-1.} UNTIL k <0  STEP { SET k TO k-1.} DO{
-		P_vizMsg:REMOVE(rem_list[k]).
+		terminalMsgs:REMOVE(rem_list[k]).
 	}
 	
-	P_vizMsg:INSERT(
+	terminalMsgs:INSERT(
 					0,
 					LEXICON(
 							"msg","T+" + sectotime(TIME:SECONDS - vehicle["ign_t"],"") + ": " + msg,
@@ -32,13 +30,13 @@ FUNCTION addMessage {
 }
 
 FUNCTION message_Viz {
-	LOCAL  msglist IS P_vizMsg:SUBLIST(0,P_vizMsg:LENGTH).
+	LOCAL  msglist IS terminalMsgs:SUBLIST(0,terminalMsgs:LENGTH).
 	LOCAl k IS 0.
 	UNTIL FALSE {
-		IF k>= P_vizMsg:LENGTH {BREAK.}
+		IF k>= terminalMsgs:LENGTH {BREAK.}
 		PRINT "                                                             "AT (1,msgloc + k).
-		IF TIME:SECONDS < P_vizMsg[k]["ttl"] {
-			PRINTPLACE(P_vizMsg[k]["msg"],61,1,msgloc + k).
+		IF TIME:SECONDS < terminalMsgs[k]["ttl"] {
+			PRINTPLACE(terminalMsgs[k]["msg"],61,1,msgloc + k).
 		}
 		SEt k TO k+1.
 	}
@@ -125,14 +123,12 @@ FUNCTION drawUI {
 	
 
 	
-	IF (vehiclestate["ops_mode"] =2) OR (vehiclestate["ops_mode"] =3){	
+	IF (vehiclestate["ops_mode"] >1) {	
 	
 		PRINT "    S_MODE     : "	AT (32,vehloc).
 		PRINT "    STATUS     : "	AT (32,vehloc+1).
-		//PRINT "   UPFG STG    : "	AT (32,vehloc+2).
-		PRINT "   STG MODE    : "	AT (32,vehloc+3).
-		PRINT "     T_GO      : " AT (32,vehloc+4).	
-		PRINT "     V_GO      : " AT (32,vehloc+5).
+		PRINT "     T_GO      : " AT (32,vehloc+3).	
+		PRINT "     V_GO      : " AT (32,vehloc+4).
 		
 		
 	}
@@ -171,7 +167,6 @@ FUNCTION drawUI {
 //				requires flight sequence given by P_seq defined as GLOBAL and of type LIST
 //				capable of displaying custom messages, set up by addMessage as a GLOBAL STRING with a FLOAT time to live
 FUNCTION dataViz {
-	if (vehiclestate["ops_mode"] =0) {return.}
 	
 	log_telemetry().
 	
@@ -265,29 +260,19 @@ FUNCTION dataViz {
 	
 	
 	//upfg data
-	IF (vehiclestate["ops_mode"] =2) OR (vehiclestate["ops_mode"] =3) {
+	IF (vehiclestate["ops_mode"] > 1) {
 		
 		PRINTPLACE(target_orbit["mode"],12,50,vehloc).
 	
-		IF usc["conv"]=1 { PRINTPLACE("CONVERGED",12,50,vehloc+1). }
-		ELSE IF usc["conv"]>-4 { PRINTPLACE("CONVERGING",12,50,vehloc+1). }
-		ELSE { PRINTPLACE("NOT CONVERGED",12,50,vehloc+1). }
-		
-		//PRINTPLACE(upfg_stg,12,50,vehloc+2).
-		
-		IF stg["mode"]=1 {
-			PRINTPLACE("CONST T",12,50,vehloc+3).
+		IF (upfgInternal["s_conv"]) {
+			PRINTPLACE("CONVERGED",12,50,vehloc+1).
+		} ELSE IF (upfgInternal["iter_conv"] > 0) {
+			PRINTPLACE("CONVERGING",12,50,vehloc+1).
+		} ELSE {
+			PRINTPLACE("NOT CONVERGED",12,50,vehloc+1).
 		}
-		ELSE IF stg["mode"]=2 {
-			PRINTPLACE("CONST G",12,50,vehloc+3).
-		}
-		IF DEFINED (upfgInternal) {
-			PRINTPLACE(sectotime(upfgInternal["Tgo"]),12,50,vehloc+4). 
-			PRINTPLACE(ROUND(upfgInternal["vgo"]:MAG,0),12,50,vehloc+5). 
-		}
-		
-		
-
+		PRINTPLACE(sectotime(upfgInternal["Tgo"]),12,50,vehloc+3). 
+		PRINTPLACE(ROUND(upfgInternal["vgo"]:MAG,0),12,50,vehloc+4). 
 	}
 	
 	//messages
@@ -348,7 +333,7 @@ FUNCTION log_telemetry {
 		SET loglex["Incl"] TO ORBIT:INCLINATION.
 		SET loglex["Ecctr"] TO ORBIT:ECCENTRICITY.
 
-		log_data(loglex).
+		log_data(loglex, "./UPFG_general/LOGS/" + vehicle["name"] + "_log").
 	}
 }
  
