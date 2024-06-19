@@ -147,11 +147,8 @@ FUNCTION initialise_vehicle{
 												"Tstage",0,
 												"mode", 2,
 												"glim",stg["glim"],
-												"Throttle", 1,
-												"throt_mult",0
+												"Throttle", 1
 										).
-					
-					SET new_stg["throt_mult"] TO new_stg["glim"]*g0/new_stg["engines"]["thrust"].
 					vehicle["stages"]:INSERT(k+1, new_stg).
 					SET vehlen TO vehicle["stages"]:LENGTH.
 				}
@@ -200,9 +197,9 @@ FUNCTION initialise_vehicle{
 				//only add a new stage if it burns for at least 3 seconds 
 				LOCAL min_newstg_m_initial IS newstg_m_final + 3 * stg["engines"]["minThrottle"] * stg["engines"]["flow"].
 				
-				print "newstg_m_initial " + newstg_m_initial/1000 at (0,29).
-				print "min_newstg_m_initial " + min_newstg_m_initial/1000 at (0,30).
-				print "newstg_m_final " + newstg_m_final/1000 at (0,31).
+				//print "newstg_m_initial " + newstg_m_initial/1000 at (0,29).
+				//print "min_newstg_m_initial " + min_newstg_m_initial/1000 at (0,30).
+				//print "newstg_m_final " + newstg_m_final/1000 at (0,31).
 				
 				IF (newstg_m_initial > min_newstg_m_initial) {
 					
@@ -249,19 +246,28 @@ FUNCTION initialise_vehicle{
 	vehicle:ADD("traj_steepness", 0.9).	//placeholder
 	
 	set_staging_trigger().
+	prepare_events_trigger().
 	
-	debug_vehicle().
+	//debug_vehicle().
+}
+
+FUNCTION debug_vehicle {
+	
+	dump_vehicle().
+	
+	until false{
+		print "vehicle debug, press crtl-c to quit" at (0,2).
+		wait 0.1.
+	}
 }
 
 
-FUNCTION debug_vehicle {
+FUNCTION dump_vehicle {
 	IF EXISTS("0:/vehicledump.txt") {
 		DELETEPATH("0:/vehicledump.txt").
 	}
 	
 	log vehicle:dump() to "0:/vehicledump.txt".
-	
-	until false{wait 0.1.}
 }
 
 
@@ -488,7 +494,8 @@ function ascent_dap_factory {
 		print "cur_steer_roll : " + round(this:cur_steer_roll,3) + "    " at (0,line + 6).
 		print "steer_cmd_roll : " + round(this:steer_cmd_roll,3) + "    " at (0,line + 7).
 		print "thr_tgt : " + round(this:thr_tgt,3) + "    " at (0,line + 8).
-		print "thr_cmd : " + round(this:thr_cmd,3) + "    " at (0,line + 9).
+		print "thr lims : [" + round(this:thr_min,3) + "," + round(this:thr_max,3) +  "]    " at (0,line + 9).
+		print "thr_cmd : " + round(this:thr_cmd,3) + "    " at (0,line + 10).
 		
 		print "steer_pitch_delta : " + round(this:steer_pitch_delta,3) + "    " at (0,line + 11).
 		print "steer_roll_delta : " + round(this:steer_roll_delta,3) + "    " at (0,line + 12).
@@ -560,61 +567,54 @@ FUNCTION get_stage {
 	RETURN vehicle["stages"][vehiclestate["cur_stg"]].
 }
 
+function prepare_events_trigger {
 
-FUNCTION events_handler {
-
-	local met is TIME:SECONDS - vehicle["ign_t"].
-
-	local x IS events:LENGTH.
-	
-	local rem_list IS LIST().
-
-	FROM {LOCAL k IS 0.} UNTIL k >= x STEP { SET k TO k+1.} DO{
-		
-		IF met>events[k]["time"]  {
-			IF events[k]["type"]="jettison" {
-				TOGGLE AG8.
-				IF events[k]:HASKEY("mass") {
-					FROM { LOCAL i IS j. } UNTIL i > (vehicle["stages"]:LENGTH - 1)  STEP { SET i TO i+1. } DO {
-						SET vehicle["stages"][i]["m_initial"] TO vehicle["stages"][i]["m_initial"] - events[k]["mass"].
-						SET vehicle["stages"][i]["m_final"] TO vehicle["stages"][i]["m_final"] - events[k]["mass"].
-					}
-				}
-				rem_list:ADD(k).
-				SET x TO x-1.
-				SEt k TO k-1.
-			}
-			ELSE IF events[k]["type"]="roll" {
-				//SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.4.
-								
-				IF ABS(events[k]["angle"] - vehicle["roll"])<5 {
-					set vehicle["roll"] TO events[k]["angle"].
-					rem_list:ADD(k).
-					SET x TO x-1.
-					SEt k TO k-1.
-					
-				} ELSE {
-					//local rollsign is SIGN(events[k]["angle"] - vehicle["roll"]).
-					
-					local rollsign is SIGN( unfixangle( events[k]["angle"] - vehicle["roll"] ) ).
-					set vehicle["roll"] TO fixangle(vehicle["roll"] + rollsign*5).
-				} 
-			}
-
-			ELSE IF events[k]["type"]="action" { 
-				IF events[k]:HASKEY("action") {
-					events[k]["action"]:call().
-				}
-				rem_list:ADD(k).
-			}
-				
-			
-			
+	for e_ in events {
+		IF (NOT e_:HASKEY("triggered")) {
+			e_:add("triggered", FALSE).
 		}
 	}
+}
+
+FUNCTION events_handler {
 	
-	FOR j IN rem_list {
-		events:REMOVE(rem_list[j]).
+	local rem_list IS LIST().
+	
+	for e_ in events {
+		if (NOT e_["triggered"]) {	
+		
+			IF (surfacestate["MET"] > e_["time"])  {
+				IF e_["type"]="jettison" {
+					TOGGLE AG8.
+					IF e_:HASKEY("mass") {
+						FROM { LOCAL i IS j. } UNTIL i > (vehicle["stages"]:LENGTH - 1)  STEP { SET i TO i+1. } DO {
+							SET vehicle["stages"][i]["m_initial"] TO vehicle["stages"][i]["m_initial"] - e_["mass"].
+							SET vehicle["stages"][i]["m_final"] TO vehicle["stages"][i]["m_final"] - e_["mass"].
+						}
+					}
+					set e_["triggered"] to TRUE.
+				}
+				ELSE IF e_["type"]="roll" {
+					
+					set vehicle["roll"] to e_["angle"].
+					dap:set_steering_high().
+					set e_["triggered"] to TRUE.
+					
+					local tnext is surfacestate["MET"] + 60.
+					
+					WHEN(surfacestate["MET"] > tnext) THEN {
+						dap:set_steering_low().
+					}
+				}
+
+				ELSE IF e_["type"]="action" { 
+					IF e_:HASKEY("action") {
+						e_["action"]:call().
+					}
+					set e_["triggered"] to TRUE.
+				}
+			}
+		}
 	}
 }
 
@@ -742,6 +742,10 @@ FUNCTION getState {
 			 
 		}
 	}	
+	
+	if (debug_mode) {
+		dump_vehicle().
+	}
 }
 
 
@@ -835,6 +839,8 @@ FUNCTION staging_reset {
 	SET vehiclestate["m_burn_left"] TO stg["m_burn"].
 	handle_ullage(stg).
 	set_staging_trigger().
+	//this is necessary to reset throttle if we have g-throttling before another stage
+	set upfgInternal["throtset"] to stg["Throttle"].
 }
 
 FUNCTION set_staging_trigger {

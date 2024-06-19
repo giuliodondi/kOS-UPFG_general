@@ -9,6 +9,7 @@ RUNPATH("0:/Libraries/misc_library").
 RUNPATH("0:/Libraries/maths_library").	
 RUNPATH("0:/Libraries/navigation_library").	
 RUNPATH("0:/Libraries/vehicle_library").	
+RUNPATH("0:/Libraries/aerosim_library").	
 
 RUNPATH("0:/UPFG_general/src/upfg_interface_library").
 RUNPATH("0:/UPFG_general/src/upfg_targeting_library").
@@ -50,9 +51,9 @@ function upfg_main_exec{
 													if (cur_stg["engines"]:HASKEY("minThrottle")) {
 														set dap:thr_min to cur_stg["engines"]["minThrottle"].
 													} else {
-														set dap:thr_min to 1.
+														set dap:thr_min to 0.
 													}
-													
+													set dap:steer_roll to vehicle["roll"].
 													dap:steer_auto_thrvec().
 													dap:thr_control_auto().
 													
@@ -97,7 +98,7 @@ declare function countdown{
 	SET dap:thr_tgt TO 1.
 	set dap:steer_refv to HEADING(target_orbit["launch_az"] + 180, 0):VECTOR.	
 	dap:set_steering_low().
-	set dap:steer_roll to vehicle["roll"].
+	LOCK THROTTLE to dap:thr_cmd.
 	
 	local TT IS TIME:SECONDS + 10 - vehicle["preburn"].
 	WHEN  TIME:SECONDS>=TT  THEN {
@@ -214,12 +215,12 @@ function closed_loop_ascent{
 		getState().
 		
 		if (vehicle["low_level"]) {
-			addGUIMessage("LOW LEVEL").
+			addMessage("LOW LEVEL").
 			BREAK.
 		}
 		
 		if (upfgInternal["s_meco"]) {
-			addGUIMessage("TERMINAL GUIDANCE").
+			addMessage("TERMINAL GUIDANCE").
 			BREAK.
 		}	
 		
@@ -235,10 +236,14 @@ function closed_loop_ascent{
 			upfgInternal
 		).
 		
-		IF (upfgInternal["s_conv"] AND NOT vehiclestate["staging_in_progress"]) {
-			dap:set_steer_tgt(vecYZ(upfgInternal["steering"])).
+		if (NOT vehiclestate["staging_in_progress"]) {
 			set dap:thr_tgt to upfgInternal["throtset"].	
+		
+			IF (upfgInternal["s_conv"]) {
+				dap:set_steer_tgt(vecYZ(upfgInternal["steering"])).
+			}
 		}
+		
 		
 		if (debug_mode) {
 			clearvecdraws().
@@ -281,12 +286,16 @@ function post_meco_actions {
 	SET SHIP:CONTROL:NEUTRALIZE TO TRUE.
 
 	drawUI().
+	print_ascent_report().
 	getState().
 	dataViz().
 	
 	WAIT 5.
 	
 	dap_gui_executor["stop_execution"]().
+	
+	clearscreen.
+	clearvecdraws().
 }
 
 upfg_main_exec().

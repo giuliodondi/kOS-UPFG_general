@@ -137,27 +137,6 @@ FUNCTION drawUI {
 		PRINT "AVAILABLE" AT (42,vehloc+3).
 	}
 	
-	IF vehiclestate["ops_mode"] = 4 {
-		
-		PRINTPLACE("TIME TAKEN: " + sectotime(TIME:SECONDS - vehicle["ign_t"]),61,1,msgloc).
-		PRINTPLACE("FINAL ORBITAL PARAMETERS:",61,1,msgloc + 2).
-		PRINTPLACE("APOAPSIS: " + ROUND(APOAPSIS/1000,1) + " km  |  PERIAPSIS: " + ROUND(PERIAPSIS/1000,1) + " km",61,1,msgloc + 4).
-		PRINTPLACE("INCLINATION:  " + ROUND(ORBIT:INCLINATION,3) + " deg  |  LAN: " + ROUND(ORBIT:LAN,3) + " deg  |  TRUE ANOM.: " + ROUND(ORBIT:TRUEANOMALY,2) + " deg",61,1,msgloc + 6).
-		
-		local str is "Ap err: " + ROUND(abs((1 - APOAPSIS/(target_orbit["Apoapsis"]*1000))*100),3) + "% ".
-		set str to str + "| Pe err: " + ROUND(abs((1 - PERIAPSIS/(target_orbit["Periapsis"]*1000))*100),3) + "%".
-		
-		PRINTPLACE(str,61,1,msgloc + 8).
-		
-		set str to "Incl err: " + ROUND(abs((1 - ORBIT:INCLINATION/target_orbit["Inclination"])*100),3) + "% ".
-		set str to str + "| LAN err: " + ROUND(abs((1 - ORBIT:LAN/target_orbit["LAN"])*100),3) + "% ".
-		set str to str + "| True Anomaly err: " + ROUND(abs(ORBIT:TRUEANOMALY - target_orbit["eta"] ),2) + "deg ".
-
-		PRINTPLACE(str,61,1,msgloc + 10).
-		PRINTPLACE("PRESS AG9 TO END THE PROGRAM.",61,1,64).
-	
-	}
-	
 }
 
 
@@ -266,11 +245,10 @@ FUNCTION dataViz {
 	
 		IF (upfgInternal["s_conv"]) {
 			PRINTPLACE("CONVERGED",12,50,vehloc+1).
-		} ELSE IF (upfgInternal["iter_conv"] > 0) {
-			PRINTPLACE("CONVERGING",12,50,vehloc+1).
 		} ELSE {
-			PRINTPLACE("NOT CONVERGED",12,50,vehloc+1).
+			PRINTPLACE("CONVERGING",12,50,vehloc+1).
 		}
+		
 		PRINTPLACE(sectotime(upfgInternal["Tgo"]),12,50,vehloc+3). 
 		PRINTPLACE(ROUND(upfgInternal["vgo"]:MAG,0),12,50,vehloc+4). 
 	}
@@ -280,7 +258,23 @@ FUNCTION dataViz {
 
 }
 
+function print_ascent_report {
+		
+	local orbit_str is "AP: " + ROUND(APOAPSIS/1000,1) + " km | PE: " + ROUND(PERIAPSIS/1000,1) + " km".
+	
+	set orbit_str to orbit_str + " | INCL:  " + ROUND(ORBIT:INCLINATION,3) + " ° | TRUE AN.: " + ROUND(ORBIT:TRUEANOMALY,2) + " °".
 
+	addMessage(orbit_str).
+	
+	local orbit_err_str is "Ap err: " + ROUND(abs((1 - APOAPSIS/(1 + target_orbit["Apoapsis"]*1000))*100),2) + "%".
+	set orbit_err_str to orbit_err_str + " | Pe err: " + ROUND(abs((1 - PERIAPSIS/(1 + target_orbit["Periapsis"]*1000))*100),2) + "%".
+	
+	set orbit_err_str to orbit_err_str + " | Incl err: " + ROUND(abs((1 - ORBIT:INCLINATION/(0.001 + target_orbit["Inclination"]))*100),3) + "%".
+	set orbit_err_str to orbit_err_str + " | True An err: " + ROUND(abs(ORBIT:TRUEANOMALY - target_orbit["eta"] ),2) + "° ".
+
+	addMessage(orbit_err_str).
+
+}
 
 FUNCTION prepare_telemetry {
 	if logdata=TRUE {	

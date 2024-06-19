@@ -2,12 +2,12 @@
 
 //Launch Settings
 
-GLOBAL vesselfilename is "Mini SLS".     //this is the name of the vessel file to load
+GLOBAL vesselfilename is "Atlas V - 431".     //this is the name of the vessel file to load
 
 GLOBAL target_orbit IS LEXICON (	
-								"periapsis",0,
-								"apoapsis",400,
-								"cutoff alt",120,
+								"periapsis",170,
+								"apoapsis",700,
+								"cutoff alt",170.5,
 								"inclination",28.8
 ).
 
