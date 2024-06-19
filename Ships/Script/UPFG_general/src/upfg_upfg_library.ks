@@ -51,7 +51,11 @@ FUNCTION setupUPFG {
 	LOCAL init_steervec IS vecYZ(thrust_vec()).
 	LOCAL stg IS get_stage().
 	local init_throt is stg["Throttle"].
-	LOCAL min_throt IS stg["engines"]["minThrottle"].
+	LOCAL min_throt IS 0.
+	
+	if (stg["engines"]:HASKEY("minThrottle")) {
+		set min_throt to stg["engines"]["minThrottle"].
+	}
 
 	SET upfgInternal TO  LEXICON(
 		"r_cur", V(0, 0, 0),
@@ -66,6 +70,7 @@ FUNCTION setupUPFG {
 		"iter_conv", 0,
 		"iter_unconv", 0,
 		"itercount", 0,
+		"itercount_reset", 40,
 		"terminal_time", 5,
 		"tgo_conv", 1,
 		"steer_conv", 20,
@@ -508,7 +513,7 @@ FUNCTION upfg {
 	}
 	
 	//protection
-	if (internal["itercount"] > 40) {
+	if (internal["itercount"] > internal["itercount_reset"]) {
 		resetUPFG().
 		RETURN.
 	}

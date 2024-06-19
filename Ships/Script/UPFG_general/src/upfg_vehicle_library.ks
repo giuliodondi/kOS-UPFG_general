@@ -515,7 +515,7 @@ function ascent_dap_factory {
 	}).
 	
 	this:add("set_steering_low", {
-		SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.1.
+		SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.5.
 	}).
 	
 	this:add("set_rcs", {
