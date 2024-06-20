@@ -743,6 +743,11 @@ FUNCTION getState {
 		}
 	}	
 	
+	if (engine_flameout()) {
+		//this should force staging if we detect flameout and it hasn't been triggered yet 
+		SET stg["Tstage"] TO 0.
+	}
+	
 	if (debug_mode) {
 		dump_vehicle().
 	}
@@ -763,9 +768,8 @@ FUNCTION STAGING{
 	
 	addMessage("CLOSE TO STAGING").
 	SET vehiclestate["staging_time"] TO surfacestate["time"]+100.		//bias of 100 seconds to avoid premature triggering of the staging actions
-	
 
-	WHEN (depletion_ AND engine_flameout()) or ((NOT depletion_) AND vehicle["stages"][vehiclestate["cur_stg"]]["Tstage"] <=0.01 ) THEN {	
+	WHEN (vehicle["stages"][vehiclestate["cur_stg"]]["Tstage"] <= 0.01) THEN {	
 		SET vehiclestate["staging_in_progress"] TO TRUE.
 		addMessage("STAGING").
 		SET vehiclestate["staging_time"] TO surfacestate["time"].
