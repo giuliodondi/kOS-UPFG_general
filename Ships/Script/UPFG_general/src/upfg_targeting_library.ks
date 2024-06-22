@@ -22,6 +22,7 @@ GLOBAL orbitstate IS  LEXICON(
 								"velocity",v(0,0,0)
 ). 
 
+GLOBAL debug_tli is false.
 
 
 
@@ -121,7 +122,7 @@ declare function moon_shot {
 	//initialise antipode vector
 	LOCAL antipodevec IS (-moon_transfer["body"]:POSITION + SHIP:ORBIT:BODY:POSITION):NORMALIZED*SHIP:ORBIT:BODY:RADIUS*2.
 	
-	if (debug) {
+	if (debug_tli) {
 		arrow_body(antipodevec, "antipode1").
 	}
 	
@@ -129,7 +130,8 @@ declare function moon_shot {
 	
 	//find intersection point bw transfer orbit and lunar SOI given fixed patching parameters
 	
-	LOCAL lambda1 IS 58.2. //hardcoded value
+	local moon_xfer_apo is 450000.		//hard-coded, km 
+	LOCAL lambda1 IS 80. //hard-coded value
 	LOCAL r2 IS 66100000.
 	LOCAL D_em IS (moon_transfer["body"]:POSITION - SHIP:ORBIT:BODY:POSITION):MAG.
 	
@@ -138,8 +140,8 @@ declare function moon_shot {
 	
 	//find transfer time between periapsis and intersection point
 	
-	moon_transfer:ADD("SMA", orbit_appe_sma(moon_transfer["apoapsis"], target_orbit["periapsis"])).
-	moon_transfer:ADD("ecc", orbit_appe_ecc(moon_transfer["apoapsis"], target_orbit["periapsis"])).
+	moon_transfer:ADD("SMA", orbit_appe_sma(moon_xfer_apo, target_orbit["periapsis"])).
+	moon_transfer:ADD("ecc", orbit_appe_ecc(moon_xfer_apo, target_orbit["periapsis"])).
 	
 	//true anomaly
 	LOCAL transfer_moon_eta IS orbit_alt_eta(r1, moon_transfer["SMA"], moon_transfer["ecc"]).
@@ -159,7 +161,7 @@ declare function moon_shot {
 	
 	SET moon_orbit["normal"] TO targetNormal(ABS(moon_orbit["inclination"]), moon_orbit["LAN"]).
 	
-	if (debug) {
+	if (debug_tli) {
 		arrow_body(moon_orbit["normal"] * SHIP:ORBIT:BODY:RADIUS, "moon_normal").
 	}
 
@@ -167,12 +169,12 @@ declare function moon_shot {
 	//find the MASTER antipode on which the rest is based
 	LOCAL rota IS t_to_eta(moon_transfer["body"]:ORBIT:TRUEANOMALY,tau0,moon_orbit["SMA"],moon_orbit["ecc"]) - moon_transfer["body"]:ORBIT:TRUEANOMALY .
 	
-	if (debug) {
+	if (debug_tli) {
 		PRINT "transfer time " + sectotime(tau0) AT (0,44).
 		PRINT "moon transfer rotation base" + rota AT (0,45).
 	}
 	
-	SET rota TO rota + moon_transfer["lead_angle"] + gamma1.
+	SET rota TO rota + gamma1.
 	SET antipodevec TO rodrigues(antipodevec, moon_orbit["normal"], -rota). 
 	
 	//LAN and injection vector given inclination and "right now" launch
@@ -181,8 +183,42 @@ declare function moon_shot {
 	
 	LOCAL parking_orb_normal IS targetNormal(target_orbit["inclination"], target_orbit["LAN"]).
 	
-	
 	LOCAL injectionvec IS VXCL(parking_orb_normal, - SHIP:ORBIT:BODY:POSITION ).
+	
+	//work out the tli relative angle based on proximity to the target site on the moon 
+	
+	if (NOT moon_transfer:haskey("rel_angle_high")) {
+		moon_transfer:add("rel_angle_high", false).
+	}
+	
+	//should the orbital plane of tli be above of below the moon orbital plane?
+	
+	LOCAL tli_plane_above_moon_orb is TRUE.
+	
+	IF (moon_transfer["tgt_site_latitude"]="north") {
+		IF (moon_transfer["tgt_site_hemisphere"]="west") {
+			set tli_plane_above_moon_orb to FALSE.
+		}
+	} ELSE IF (moon_transfer["tgt_site_latitude"]="south") {
+		IF (moon_transfer["tgt_site_hemisphere"]="east") {
+			set tli_plane_above_moon_orb to FALSE.
+		}
+	}
+	
+	//is the antipode closer to its ascending or descending node?
+	//if the antipode is ascending, the moon is descending by definition
+	local apveclng IS VXCL(V(0,1,0),antipodevec).
+	LOCAL deltalng_lan IS signed_angle( apveclng ,  SOLARPRIMEVECTOR,v(0,1,0),1).
+	set deltalng_lan TO unfixangle(deltalng_lan - moon_orbit["LAN"]).
+	
+	LOCAL antipode_asc IS TRUE.
+	IF ABS(deltalng_lan)>90 {set antipode_asc to FALSE.} 
+	
+	if (antipode_asc) {
+		set moon_transfer["rel_angle_high"] to (tli_plane_above_moon_orb).
+	} else {
+		set moon_transfer["rel_angle_high"] to (NOT tli_plane_above_moon_orb).
+	}
 	
 	//during the iteration we initialise the tli vector as the ascending or descending node 
 	//of the parking orbit, rotate it until we match the antipode's latitude and then compare the longitude.
@@ -193,49 +229,38 @@ declare function moon_shot {
 	//TLI vector rotation sign
 	LOCAL tli_s IS 1.
 	
-	//is the moon above or below the equatorial plane?
+	
+	//is the antipode above or below the equatorial plane?
 	LOCAL antipodelat IS BODY:GEOPOSITIONOF(antipodevec + SHIP:BODY:POSITION):LAT.
-	LOCAL above IS TRUE.
-	IF SIGN(antipodelat)<0 {set above to FALSE.}
+	LOCAL antipode_above IS TRUE.
+	IF SIGN(antipodelat)<0 {set antipode_above to FALSE.}
 	
-	if (debug) {
-		
-	}
 	
-	//is the antipode closer to its ascending or descending node?
-	local apveclng IS VXCL(V(0,1,0),antipodevec).
-	LOCAL deltalng_lan IS signed_angle( apveclng ,  SOLARPRIMEVECTOR,v(0,1,0),1).
-	set deltalng_lan TO unfixangle(deltalng_lan - moon_orbit["LAN"]).
-	
-	LOCAL asc IS TRUE.
-	IF ABS(deltalng_lan)>90 {set asc to FALSE.} 
 	
 	//should TLI occur close to the parking orbit's ascending or descending node?
-	LOCAL ldn IS FALSE.
+	LOCAL tli_ldn IS FALSE.
 	
-	IF (moon_transfer["rel_angle"]="low") {
-		IF NOT asc {SET ldn TO TRUE.}
+	if (moon_transfer["rel_angle_high"]) {
+		IF  antipode_asc {SET tli_ldn TO TRUE.}
+	} else {
+		IF NOT antipode_asc {SET tli_ldn TO TRUE.}
 	}
-	ELSE IF (moon_transfer["rel_angle"]="high") {
-		IF  asc {SET ldn TO TRUE.}
-	}
-	
-
 	
 	//now determine whether to rotate forwards or backwards
-	IF ldn {
-		IF above {SET tli_s TO -1.}
+	IF tli_ldn {
+		IF antipode_above {SET tli_s TO -1.}
 	}
 	ELSE {
-		IF NOT above {SET tli_s TO -1.}
+		IF NOT antipode_above {SET tli_s TO -1.}
 	}
 
-	if (debug) {
-		PRINT "moon above: " + above AT (0,47).
-		PRINT "difference of longitude of antipode and moon lan: " + deltalng_lan AT (0,48).
-		PRINT "moon ascending: " + asc AT (0,49).
-		PRINT "lan or ldn: " + ldn AT (0,50).
-		PRINT "tli rotation sign: " + tli_s AT (0,51).
+	if (debug_tli) {
+		PRINT "antipode above: " + antipode_above AT (0,47).
+		PRINT "tli plane above moon plane: " + tli_plane_above_moon_orb AT (0,48).
+		PRINT "antipode ascending: " + antipode_asc AT (0,49).
+		PRINT "difference of longitude of antipode and moon lan: " + deltalng_lan AT (0,50).
+		PRINT "tli lan or ldn: " + tli_ldn AT (0,51).
+		PRINT "tli rotation sign: " + tli_s AT (0,52).
 	}
 	
 	//time factors
@@ -244,8 +269,6 @@ declare function moon_shot {
 	LOCAL pkobt_t Is 2*CONSTANT:PI*SQRT(target_orbit["SMA"]^3/(SHIP:ORBIT:BODY:MU)).
 	
 	LOCAL epsilon IS 0.05.
-	
-	PRINT "ITERATING TO FIND TARGET LAN" AT (0,11).
 	
 	lOCAL dLNG IS 0.
 	LOCAL tlivec IS V(0,0,0).
@@ -260,13 +283,13 @@ declare function moon_shot {
 		
 		//rotate antipode given time ahead
 		SET rota TO t_to_eta(moon_transfer["body"]:ORBIT:TRUEANOMALY,tau,moon_orbit["SMA"],moon_orbit["ecc"]).
-		SET rota TO rota -moon_transfer["body"]:ORBIT:TRUEANOMALY + moon_transfer["lead_angle"] + gamma1.
+		SET rota TO rota -moon_transfer["body"]:ORBIT:TRUEANOMALY + gamma1.
 		SET antipodevec TO rodrigues(antipodevec, moon_orbit["normal"], -rota). 
 	
 		//TLI vector initialised as ascending node and if appropriate turned into descending node
 		
 		SET tlivec TO rodrigues(SOLARPRIMEVECTOR, V(0,1,0), -target_orbit["LAN"]):NORMALIZED*SHIP:ORBIT:BODY:RADIUS*2..
-		IF ldn {SET tlivec TO -tlivec.}
+		IF tli_ldn {SET tlivec TO -tlivec.}
 	
 		//rotate TLI vector given antipode's latitude
 		LOCAL antipodelat IS ABS(BODY:GEOPOSITIONOF(antipodevec + SHIP:BODY:POSITION):LAT).
@@ -309,11 +332,11 @@ declare function moon_shot {
 		SET tli_wait TO eta_to_dt(coasta,target_orbit["SMA"],target_orbit["ecc"]).
 		
 		
-		if (debug) {
-			print "lunar rot angle between now and arrival: " + rota  at (0,53).
-			PRINT "delta_longitude: " + dLNG AT (0,56).
-			PRINT "tli/antipode angle: " + tli_antip_angle AT (0,57).
-			print "parking obt coast angle:" + coasta at (0,59).
+		if (debug_tli) {
+			print "lunar rot angle between now and arrival: " + rota  at (0,54).
+			PRINT "delta_longitude: " + dLNG AT (0,55).
+			PRINT "tli/antipode angle: " + tli_antip_angle AT (0,56).
+			print "parking obt coast angle:" + coasta at (0,57).
 		}
 
 		//if TLI is less than half an orbit away add one full orbit
@@ -340,13 +363,13 @@ declare function moon_shot {
 	PRINT "                                                               " at (0,11).
 	PRINT " TLI SCHEDULED FOR " + sectotime(tli_wait) + " AFTER INJECTION" AT (0,11).
 	
-	if (debug) {
+	if (debug_tli) {
 		arrow_body(antipodevec, "antipode2").
 		arrow_body(tlivec * SHIP:ORBIT:BODY:RADIUS, "tli_vec").
 		arrow_body(parking_orb_normal * SHIP:ORBIT:BODY:RADIUS, "tli_normal").
 	}
 	
-	until (NOT debug) {}.
+	until (NOT debug_tli) {}.
 
 }
 
@@ -355,62 +378,6 @@ declare function moon_shot {
 //therefore we neglect those times and do an approximate calculation moving the target position by just the transfer time 
 declare function planetary_flyby {
 
-	
-	//computes time taken from periapsis to given true anomaly
-	//for differences of true anomalies call twice and subtract times
-
-	
-	declare function eta_to_dt {
-
-		parameter etaa.
-		parameter sma.
-		parameter ecc.
-
-		local COS_ee IS (ecc + COS(fixangle(etaa)))/(1 + ecc*COS(fixangle(etaa))).
-
-		LOCAL ee IS ARCCOS(limitarg(COS_ee)).			
-
-		LOCAL mean_an IS deg2rad(ee)  - ecc*SIN(ee).
-		
-		IF etaa>180 { SET mean_an TO 2*CONSTANT:PI - mean_an.}
-		
-		LOCAL n IS SQRT(sma^3/(SHIP:ORBIT:BODY:MU)).
-		
-
-		RETURN n*mean_an.
-	}
-
-	//given true anomaly at t0 and a time interval, computes new true anomaly
-	//approximation correct at ecc^3
-	
-	declare function t_to_eta {
-		parameter etaa0.
-		parameter dt.
-		parameter sma.
-		parameter ecc.
-		
-		
-		local COS_ee IS (ecc + COS(fixangle(etaa0)))/(1 + ecc*COS(fixangle(etaa0))). 
-		LOCAL ee IS ARCCOS(limitarg(COS_ee)).
-
-		LOCAL mean_an IS deg2rad(ee)  - ecc*SIN(ee).
-		
-		IF etaa0>180 { SET mean_an TO 2*CONSTANT:PI - mean_an.}
-		
-
-		LOCAL n IS SQRT(sma^3/(SHIP:ORBIT:BODY:MU)).
-		
-		SET mean_an TO mean_an + dt/n.
-		
-		local out is mean_an.
-		
-		SET mean_an TO  fixangle(rad2deg(mean_an)).
-
-		SET out TO out + ecc*(2*SIN(mean_an) + 1.25*ecc*SIN(2*mean_an)).
-		
-		RETURN fixangle(rad2deg(out)).
-
-	}
 	
 	//as the moon rotates along its orbit it traces a ground track on the surface of earth.
 	//at any time we define the antipode vector as the antipode to the moon's 
