@@ -434,7 +434,7 @@ function ascent_dap_factory {
 		
 		this:measure_cur_state().
 	
-		local steer_err_tol is 0.5.
+		local steer_err_tol is 3.
 	
 		local max_roll_corr is 20.
 		
@@ -515,7 +515,7 @@ function ascent_dap_factory {
 	}).
 	
 	this:add("set_steering_low", {
-		SET STEERINGMANAGER:MAXSTOPPINGTIME TO 0.5.
+		SET STEERINGMANAGER:MAXSTOPPINGTIME TO 1.
 	}).
 	
 	this:add("set_rcs", {
