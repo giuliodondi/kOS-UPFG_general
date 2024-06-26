@@ -27,7 +27,7 @@ local moonlex is lexicon(
 					"body", moon_body,
 					"position", moon_body:position - earth_body:position,
 					"normal", body_orbital_normal_vec(moon_body),
-					"polevec", moon_body:angularvel:normalized,
+					"polevec", body_orbital_normal_vec(earth_body),	//approximate with ecliptic
 					"orb_ang_v", body_orbital_angular_vel(moon_body),
 					"tgt_site_vec", tgtsite["position"]:position - moon_body:position
 ).
@@ -62,6 +62,9 @@ local moon_antipode_normv is vcrs(moon_antipode, moonlex["normal"]):normalized.
 local tli_norm_high_lunarsoi is tli_norm_high - 2*vdot(tli_norm_high, moon_antipode_normv)*moon_antipode_normv.
 local tli_norm_low_lunarsoi is tli_norm_low - 2*vdot(tli_norm_low, moon_antipode_normv)*moon_antipode_normv.
 
+
+print vang(moonlex["polevec"], sunlex["normal"]).
+
 //local site_proj_high is vxcl(, tgtsite["position"]:position
 
 //until false {
@@ -73,10 +76,12 @@ local tli_norm_low_lunarsoi is tli_norm_low - 2*vdot(tli_norm_low, moon_antipode
 //arrow_body(tli_norm_high, "tli_norm_high").
 //arrow_body(tli_norm_low, "tli_norm_low").
 //
-//arrow_foreignbody(moon_body, - moonlex["normal"], "normal").
-//arrow_foreignbody(moon_body, tli_norm_high_lunarsoi, "high").
-//arrow_foreignbody(moon_body, tli_norm_low_lunarsoi, "low").
-//arrow_foreignbody(moon_body, tgtsite["position"]:position - moon_body:position, "site").
+////arrow_foreignbody(moon_body, - moonlex["normal"], "normal").
+////arrow_foreignbody(moon_body, tli_norm_high_lunarsoi, "high").
+////arrow_foreignbody(moon_body, tli_norm_low_lunarsoi, "low").
+//arrow_foreignbody(moon_body, moonlex["tgt_site_vec"], "site").
+////arrow_foreignbody(moon_body, moonlex["polevec"], "pole").
+//arrow_foreignbody(moon_body, sunlex["normal"], "ecliptic").
 //wait 0.3.
 //}
 
@@ -95,7 +100,7 @@ FROM {local d is 0.} UNTIL (d >= 30) STEP {set d to d+0.1.} DO {
 	print cur_time:CALENDAR at (0,1).
 	
 	arrow_foreignbody(moon_body, - moonlex["position"], "moon").
-	//arrow_foreignbody(moon_body, sunlex["position"], "sun").
+	arrow_foreignbody(moon_body, sunlex["position"], "sun").
 	arrow_foreignbody(moon_body, - moonlex["normal"] , "normal").
 	arrow_foreignbody(moon_body, - moonlex["polevec"] , "polevec").
 	arrow_foreignbody(moon_body, moonlex["tgt_site_vec"] , "site").
