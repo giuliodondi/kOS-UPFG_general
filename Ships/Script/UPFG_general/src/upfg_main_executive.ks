@@ -169,12 +169,12 @@ function open_loop_ascent{
 			}
 		}
 		
-		if (NOT vehicle["max_q_reached"]) {
-			IF (surfacestate["vs"] <= 100 ) or (surfacestate["q"] >=  surfacestate["maxq"] ) {
+		if (NOT vehicle["max_q_reached"]) AND (surfacestate["vs"] > 100) {
+			IF (surfacestate["q"] >=  surfacestate["maxq"] ) {
 				SET surfacestate["maxq"] TO surfacestate["q"].
 				set vehicle["max_q_reached"] to FALSE.
 			} else {
-				addMessage("VEHICLE HAS REACHED MAX-Q").
+				addGUIMessage("VEHICLE HAS REACHED MAX-Q").
 				set vehicle["max_q_reached"] to TRUE.
 			}
 		}
