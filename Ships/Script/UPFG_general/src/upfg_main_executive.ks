@@ -123,9 +123,16 @@ declare function countdown{
 		SET vehicle["handover"]["time"] to vehicle["ign_t"] + vehicle["handover"]["time"].
 	}
 	
+	//vertical speed greater than 1 three times in a row
+	local liftoff_sample_c is 0.
 	until false {
-		wait 0.	
-		if (SHIP:VERTICALSPEED > 1) {break.}
+		if (liftoff_sample_c >= 3) {
+			break.
+		}
+		if (SHIP:VERTICALSPEED > 1) {
+			set liftoff_sample_c to liftoff_sample_c + 1.
+		}
+		wait 0.1.
 	}
 	
 	addMessage("LIFT-OFF CONFIRMED").
