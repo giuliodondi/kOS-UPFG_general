@@ -71,7 +71,7 @@ FUNCTION setupUPFG {
 		"iter_unconv", 0,
 		"itercount", 0,
 		"itercount_reset", 40,
-		"terminal_time", 5,
+		"terminal_time", 10,
 		"tgo_conv", 1,
 		"steer_conv", 20,
 		"constraint_release_t", 40,
