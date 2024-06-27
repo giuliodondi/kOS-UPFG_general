@@ -4,6 +4,8 @@ clearvecdraws().
 
 local landing_site is "Apollo 15".
 local tli_earth_inclination is 30.
+local min_sun_angle is 6.
+local max_sun_angle is 18.
 
 RUNPATH("0:/Libraries/misc_library").	
 RUNPATH("0:/Libraries/maths_library").	
@@ -42,46 +44,30 @@ local sunlex is lexicon(
 
 //orbit_moon_sun(8 * day_sec).
 
-local moon_antipode is -moonlex["position"].
-local earth_polevec is v(0,1,0).
 
-local antipode_proj is vxcl(earth_polevec, moon_antipode).
-local antipode_norm is vcrs(antipode_proj, earth_polevec):normalized.
+local tli_opportunities is tli_planner_site(
+			moonlex["position"],
+			moonlex["normal"],
+			moonlex["tgt_site_vec"],
+			tli_earth_inclination
+).
 
-local antipode_lat is signed_angle(antipode_proj, moon_antipode, antipode_norm, 0).
-local tli_norm_rota is 90 - get_a_bBB(antipode_lat, tli_earth_inclination).
-local moon_normal_rota is signed_angle(antipode_proj, vxcl(earth_polevec,moonlex["normal"]), earth_polevec, 0). 
+print "high incl. rel angle : " + tli_opportunities["high_tli"]["site_angle"].
+print "low incl. rel angle : " + tli_opportunities["low_tli"]["site_angle"].
 
-local tli_norm_0 is rodrigues(v(0,1,0), antipode_norm, sign(antipode_lat) * tli_earth_inclination).
-
-local tli_norm_high is rodrigues(tli_norm_0, earth_polevec, -sign(moon_normal_rota) * tli_norm_rota).
-local tli_norm_low is rodrigues(tli_norm_0, earth_polevec, sign(moon_normal_rota) * tli_norm_rota).
-
-
-local moon_antipode_normv is vcrs(moon_antipode, moonlex["normal"]):normalized.
-local tli_norm_high_lunarsoi is tli_norm_high - 2*vdot(tli_norm_high, moon_antipode_normv)*moon_antipode_normv.
-local tli_norm_low_lunarsoi is tli_norm_low - 2*vdot(tli_norm_low, moon_antipode_normv)*moon_antipode_normv.
-
-
-print vang(moonlex["polevec"], sunlex["normal"]).
-
-//local site_proj_high is vxcl(, tgtsite["position"]:position
 
 //until false {
 //clearvecdraws().
 //arrow_body(-moonlex["normal"], "norm").
 //arrow_body(moonlex["position"], "moon").
-//arrow_body(moon_antipode, "antipode").
-//arrow_body(antipode_proj, "antipode_proj").
-//arrow_body(tli_norm_high, "tli_norm_high").
-//arrow_body(tli_norm_low, "tli_norm_low").
+//arrow_body(tli_opportunities["high_tli"]["normal"], "tli_norm_high").
+//arrow_body(tli_opportunities["low_tli"]["normal"], "tli_norm_low").
 //
-////arrow_foreignbody(moon_body, - moonlex["normal"], "normal").
-////arrow_foreignbody(moon_body, tli_norm_high_lunarsoi, "high").
-////arrow_foreignbody(moon_body, tli_norm_low_lunarsoi, "low").
+//arrow_foreignbody(moon_body, - moonlex["normal"], "normal").
 //arrow_foreignbody(moon_body, moonlex["tgt_site_vec"], "site").
+//
 ////arrow_foreignbody(moon_body, moonlex["polevec"], "pole").
-//arrow_foreignbody(moon_body, sunlex["normal"], "ecliptic").
+////arrow_foreignbody(moon_body, sunlex["normal"], "ecliptic").
 //wait 0.3.
 //}
 
@@ -105,6 +91,10 @@ FROM {local d is 0.} UNTIL (d >= 30) STEP {set d to d+0.1.} DO {
 	arrow_foreignbody(moon_body, - moonlex["polevec"] , "polevec").
 	arrow_foreignbody(moon_body, moonlex["tgt_site_vec"] , "site").
 	
+	local site_sun_angle is 90 - signed_angle(moonlex["tgt_site_vec"], sunlex["position"], moonlex["polevec"], 0).
+	
+	
+	print "sun angle : " + site_sun_angle.
 	
 	//advance the day
 	
