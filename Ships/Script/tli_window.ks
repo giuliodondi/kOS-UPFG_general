@@ -2,7 +2,7 @@
 CLEARSCREEN.
 clearvecdraws().
 
-local landing_site is "Apollo 15".
+local landing_site is "Apollo 11".
 local tli_earth_inclination is 30.
 local min_sun_angle is 6.
 local max_sun_angle is 18.
@@ -45,17 +45,17 @@ local sunlex is lexicon(
 //orbit_moon_sun(8 * day_sec).
 
 
-local tli_opportunities is tli_planner_site(
-			moonlex["position"],
-			moonlex["normal"],
-			moonlex["tgt_site_vec"],
-			tli_earth_inclination
-).
-
-print "high incl. rel angle : " + tli_opportunities["high_tli"]["site_angle"].
-print "low incl. rel angle : " + tli_opportunities["low_tli"]["site_angle"].
-
-
+//local tli_opportunities is tli_planner_site(
+//			moonlex["position"],
+//			moonlex["normal"],
+//			moonlex["tgt_site_vec"],
+//			tli_earth_inclination
+//).
+//
+//print "high incl. rel angle : " + tli_opportunities["high_tli"]["site_angle"].
+//print "low incl. rel angle : " + tli_opportunities["low_tli"]["site_angle"].
+//
+//
 //until false {
 //clearvecdraws().
 //arrow_body(-moonlex["normal"], "norm").
@@ -74,12 +74,13 @@ print "low incl. rel angle : " + tli_opportunities["low_tli"]["site_angle"].
 
 
 //cycle through a calendar year
-//local tli_time_bias is 4 * day_sec.
-//orbit_moon_sun(tli_time_bias).
-//set cur_time to cur_time + timespan(tli_time_bias).
+local tli_time_bias is 4 * day_sec.
+orbit_moon_sun(tli_time_bias).
+set cur_time to cur_time + timespan(tli_time_bias).
 
-//cycle a month to test the thing
-FROM {local d is 0.} UNTIL (d >= 30) STEP {set d to d+0.1.} DO {
+local tli_opportunities is list().
+
+FROM {local d is 0.} UNTIL (d >= 365) STEP {set d to d+1.} DO {
 	CLEARSCREEN.
 	clearvecdraws().
 	
@@ -96,14 +97,51 @@ FROM {local d is 0.} UNTIL (d >= 30) STEP {set d to d+0.1.} DO {
 	
 	print "sun angle : " + site_sun_angle.
 	
+	if (site_sun_angle >= min_sun_angle) and (site_sun_angle <= max_sun_angle) {
+		for t_opp in tli_planner_site(
+						cur_time,
+						moonlex["position"],
+						moonlex["normal"],
+						moonlex["tgt_site_vec"],
+						tli_earth_inclination
+			) {
+			tli_opportunities:add(t_opp).	
+		}
+		
+	}
+	
 	//advance the day
 	
-	orbit_moon_sun(0.1*day_sec).
+	orbit_moon_sun(day_sec).
 	set cur_time to cur_time + timespan(day_sec).
 	
 	
-	wait 0.1.
+	wait 0.
 }
+
+local first_tli_opp is tli_opportunities[0].
+local best_tli_opp is tli_opportunities[0].
+
+for t_opp in tli_opportunities {
+	
+	if (t_opp["time"] < first_tli_opp["time"]) {
+		if (t_opp["site_angle"] < first_tli_opp["site_angle"]) {
+			set first_tli_opp to t_opp.
+		}
+	}
+	
+	if (t_opp["site_angle"] < best_tli_opp["site_angle"]) {
+		set best_tli_opp to t_opp.
+	}
+}
+
+print "first tli opportunity : " + first_tli_opp["time"]:CALENDAR at (0,5).
+print "	 site relative angle : " + first_tli_opp["site_angle"] at (0,6).
+print "	   tli orbital angle : " + first_tli_opp["orbit_angle"] at (0,7).
+
+print "best tli opportunity : " + best_tli_opp["time"]:CALENDAR at (0,9).
+print "	 site relative angle : " + best_tli_opp["site_angle"] at (0,10).
+print "	   tli orbital angle : " + best_tli_opp["orbit_angle"] at (0,11).
 
 
 

@@ -932,6 +932,7 @@ function fix_site_position_body {
 //calculate the immediate tli opportunities and return the relative angle
 //of the estimated lunar orbit to the target site
 function tli_planner_site {
+	parameter timestamp_.
 	parameter moon_posvec.
 	parameter moon_orbit_normv.
 	parameter moon_tgt_sitev.
@@ -960,14 +961,30 @@ function tli_planner_site {
 	local siteproj_high is vxcl(tli_norm_high_lunarsoi, moon_tgt_sitev).
 	local siteproj_low is vxcl(tli_norm_low_lunarsoi, moon_tgt_sitev).
 
-	return lexicon(
-				"high_tli", lexicon(
-								"normal", tli_norm_high,
-								"site_angle", vang(moon_tgt_sitev, siteproj_high)
+	//clearvecdraws().
+	//arrow_body(-moon_orbit_normv, "norm").
+	//arrow_body(-moon_posvec, "moon").
+	//arrow_body(tli_norm_high_lunarsoi, "tli_norm_high").
+	//arrow_body(tli_norm_low_lunarsoi, "tli_norm_low").
+	//
+	//arrow_body(moon_tgt_sitev, "site").
+	//arrow_body(siteproj_high, "site_proj_high").
+	//arrow_body(siteproj_low, "site_proj_low").
+	//
+	//wait 10.
+
+	return list(
+				lexicon(
+						"time", timestamp_,
+						"normal", tli_norm_high,
+						"orbit_angle", "high",
+						"site_angle", vang(moon_tgt_sitev, siteproj_high)
 				),
-				"low_tli", lexicon(
-								"normal", tli_norm_low,
-								"site_angle", vang(moon_tgt_sitev, siteproj_low)
+				lexicon(
+						"time", timestamp_,
+						"normal", tli_norm_low,
+						"orbit_angle", "low",
+						"site_angle", vang(moon_tgt_sitev, siteproj_low)
 				)
 	).
 
