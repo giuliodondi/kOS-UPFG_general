@@ -18,6 +18,7 @@ local tgtsite is pdi_siteslex[landing_site].
 print "Specified site: " + tgtsite["name"].
 
 
+local start_time is TIME.
 local cur_time is TIME.
 local day_sec is 86400.	//synodic day length
 
@@ -84,7 +85,7 @@ FROM {local d is 0.} UNTIL (d >= 365) STEP {set d to d+1.} DO {
 	CLEARSCREEN.
 	clearvecdraws().
 	
-	print cur_time:CALENDAR at (0,1).
+	print format_calendar(cur_time) at (0,1).
 	
 	arrow_foreignbody(moon_body, - moonlex["position"], "moon").
 	arrow_foreignbody(moon_body, sunlex["position"], "sun").
@@ -94,12 +95,9 @@ FROM {local d is 0.} UNTIL (d >= 365) STEP {set d to d+1.} DO {
 	
 	local site_sun_angle is 90 - signed_angle(moonlex["tgt_site_vec"], sunlex["position"], moonlex["polevec"], 0).
 	
-	
-	print "sun angle : " + site_sun_angle.
-	
 	if (site_sun_angle >= min_sun_angle) and (site_sun_angle <= max_sun_angle) {
 		for t_opp in tli_planner_site(
-						cur_time,
+						cur_time - timespan(tli_time_bias),
 						moonlex["position"],
 						moonlex["normal"],
 						moonlex["tgt_site_vec"],
@@ -135,16 +133,19 @@ for t_opp in tli_opportunities {
 	}
 }
 
-print "first tli opportunity : " + first_tli_opp["time"]:CALENDAR at (0,5).
+print "         current date : " + format_calendar(start_time) at (0,3).
+
+
+print "first tli opportunity : " + format_calendar(first_tli_opp["time"]) at (0,5).
 print "	 site relative angle : " + first_tli_opp["site_angle"] at (0,6).
 print "	   tli orbital angle : " + first_tli_opp["orbit_angle"] at (0,7).
 
-print "best tli opportunity : " + best_tli_opp["time"]:CALENDAR at (0,9).
+print "best tli opportunity : " + format_calendar(best_tli_opp["time"]) at (0,9).
 print "	 site relative angle : " + best_tli_opp["site_angle"] at (0,10).
 print "	   tli orbital angle : " + best_tli_opp["orbit_angle"] at (0,11).
 
 
-
+clearvecdraws().
 
 function orbit_moon_sun {
 	parameter delta_t.
