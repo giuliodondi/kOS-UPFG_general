@@ -96,6 +96,8 @@ FUNCTION tgt_j2_timefor {
 
 declare function moon_shot {
 
+	RUNPATH("0:/UPFG_pdi/Moon_sites.ks").	
+
 	//as the moon rotates along its orbit it traces a ground track on the surface of earth.
 	//at any time we define the antipode vector as the antipode to the moon's 
 	//instantaneous position on the surface.
@@ -118,6 +120,10 @@ declare function moon_shot {
 	clearvecdraws().
 
 	//WE ARE DOING THE CALCULATIONS IN THE KSP FRAME 
+	
+	//target site
+	local moonsite is pdi_siteslex[moon_transfer["tgt_site"]].
+	local moon_sitevec is moonsite["position"]:position - moon_transfer["body"]:position.
 	
 	//initialise antipode vector
 	LOCAL antipodevec IS (-moon_transfer["body"]:POSITION + SHIP:ORBIT:BODY:POSITION):NORMALIZED*SHIP:ORBIT:BODY:RADIUS*2.
@@ -156,10 +162,8 @@ declare function moon_shot {
 							"ecc",moon_transfer["body"]:ORBIT:ECCENTRICITY,
 							"inclination",moon_transfer["body"]:ORBIT:INCLINATION,													
 							"LAN",moon_transfer["body"]:ORBIT:LAN,
-							"normal",V(1,0,0)
+							"normal", - body_orbital_normal_vec(moon_transfer["body"])
 	) . 
-	
-	SET moon_orbit["normal"] TO targetNormal(ABS(moon_orbit["inclination"]), moon_orbit["LAN"]).
 	
 	if (debug_tli) {
 		arrow_body(moon_orbit["normal"] * SHIP:ORBIT:BODY:RADIUS, "moon_normal").
@@ -177,6 +181,30 @@ declare function moon_shot {
 	SET rota TO rota + gamma1.
 	SET antipodevec TO rodrigues(antipodevec, moon_orbit["normal"], -rota). 
 	
+	//find the tli normal vectors given target site 
+	local moon_arrival_pos is (moon_transfer["body"]:POSITION - SHIP:ORBIT:BODY:POSITION).
+	set moon_arrival_pos to rodrigues(moon_arrival_pos, moon_orbit["normal"], -rota). 
+	set moon_sitevec to rotate_moon_posvec(moon_sitevec, tau0).
+	
+	//best tli relative angle
+	local tli_opps is tli_planner_site(
+				time,
+				moon_arrival_pos,
+				moon_orbit["normal"],
+				moon_sitevec,
+				target_orbit["inclination"]
+	).
+	
+	local best_tli_opp is tli_opps[0].
+	
+	for t_opp in tli_opps {
+		if (t_opp["site_angle"] < best_tli_opp["site_angle"]) {
+			set best_tli_opp to t_opp.
+		}
+	}
+	
+	set moon_transfer["rel_angle_high"] to (best_tli_opp["orbit_angle"] = "high").
+	
 	//LAN and injection vector given inclination and "right now" launch
 	
 	SET target_orbit["LAN"] TO LAN_orbit_overhead(target_orbit["inclination"], (target_orbit["direction"]="south"), vehicle["launchTimeAdvance"] + vehicle_countdown + 1).
@@ -187,24 +215,6 @@ declare function moon_shot {
 	
 	//work out the tli relative angle based on proximity to the target site on the moon 
 	
-	if (NOT moon_transfer:haskey("rel_angle_high")) {
-		moon_transfer:add("rel_angle_high", false).
-	}
-	
-	//should the orbital plane of tli be above of below the moon orbital plane?
-	
-	LOCAL tli_plane_above_moon_orb is TRUE.
-	
-	IF (moon_transfer["tgt_site_latitude"]="north") {
-		IF (moon_transfer["tgt_site_hemisphere"]="west") {
-			set tli_plane_above_moon_orb to FALSE.
-		}
-	} ELSE IF (moon_transfer["tgt_site_latitude"]="south") {
-		IF (moon_transfer["tgt_site_hemisphere"]="east") {
-			set tli_plane_above_moon_orb to FALSE.
-		}
-	}
-	
 	//is the antipode closer to its ascending or descending node?
 	//if the antipode is ascending, the moon is descending by definition
 	local apveclng IS VXCL(V(0,1,0),antipodevec).
@@ -214,11 +224,8 @@ declare function moon_shot {
 	LOCAL antipode_asc IS TRUE.
 	IF ABS(deltalng_lan)>90 {set antipode_asc to FALSE.} 
 	
-	if (antipode_asc) {
-		set moon_transfer["rel_angle_high"] to (tli_plane_above_moon_orb).
-	} else {
-		set moon_transfer["rel_angle_high"] to (NOT tli_plane_above_moon_orb).
-	}
+	local tli_plane_above_moon_orb is (moon_transfer["rel_angle_high"] and antipode_asc) 
+									or ((NOT moon_transfer["rel_angle_high"]) and (not antipode_asc)).
 	
 	//during the iteration we initialise the tli vector as the ascending or descending node 
 	//of the parking orbit, rotate it until we match the antipode's latitude and then compare the longitude.

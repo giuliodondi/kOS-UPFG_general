@@ -927,6 +927,14 @@ function fix_site_position_body {
 	return body_:GEOPOSITIONLATLNG(pos:LAT, pos:LNG).
 }
 
+function rotate_moon_posvec {
+	parameter moonpos_.
+	parameter delta_t.
+	parameter moon_polevec is body_orbital_normal_vec(BODY("earth")).
+	
+	return rodrigues(moonpos_, moon_polevec, body_orbital_angular_vel(BODY("moon"))*delta_t).
+}
+
 
 //given a target site and the earth-moon system
 //calculate the immediate tli opportunities and return the relative angle

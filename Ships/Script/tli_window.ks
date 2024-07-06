@@ -2,7 +2,7 @@
 CLEARSCREEN.
 clearvecdraws().
 
-local landing_site is "Apollo 11".
+local landing_site is "Apollo 15".
 local tli_earth_inclination is 30.
 local min_sun_angle is 6.
 local max_sun_angle is 18.
