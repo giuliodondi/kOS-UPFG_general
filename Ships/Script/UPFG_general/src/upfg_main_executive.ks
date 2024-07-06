@@ -181,7 +181,7 @@ function open_loop_ascent{
 				SET surfacestate["maxq"] TO surfacestate["q"].
 				set vehicle["max_q_reached"] to FALSE.
 			} else {
-				addGUIMessage("VEHICLE HAS REACHED MAX-Q").
+				addMessage("VEHICLE HAS REACHED MAX-Q").
 				set vehicle["max_q_reached"] to TRUE.
 			}
 		}
