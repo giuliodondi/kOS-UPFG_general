@@ -1,5 +1,22 @@
 
-
+//pad string wither to the left or right 
+function padstring{
+	parameter str.
+	parameter fixed_length.
+	parameter left is true.
+	
+	local out is str + "".
+	
+	until (out:length >= fixed_length) {
+		if (left) {
+			set out to " " + out.
+		} else {
+			set out to out + " ".
+		}
+	}
+	
+	return out.
+}
 
 
 //fancy function to print stuff to screen in a consistent format
@@ -33,6 +50,36 @@ FUNCTION PRINTPLACE{
 }
 
 
+//turn a lexicon of various datatypes into a lexicon for logging
+function lex2dump {
+	parameter lex_.
+	
+	local dumplex is lexicon().
+	
+	for k in lex_:keys {
+		LOCAL val IS lex_[k].
+		
+		IF val:ISTYPE("lexicon") {
+			local lex2_ is lex2dump(val).
+			for k2 in lex2_:keys {
+				dumplex:add(k2, lex2_[k2]).
+			}
+		} ELSE IF val:ISTYPE("List") {
+			LOCAL c_ IS 0.
+			for v_ in val {
+				LOCAL v_k IS k + "_" + c_.
+				dumplex:add(v_k, v_). 
+				set c_ to c_ + 1.
+			}
+		} ELSE IF val:ISTYPE("Vector") {
+			dumplex:add(k, val:mag). 
+		} ELSE {
+			dumplex:add(k, val). 
+		}
+	}
+	
+	return dumplex.
+}
 
 
 //log handler function, takes a lexicon as imput
@@ -298,7 +345,7 @@ declare function sectotime {
 	local hours is 0.
 	local mins is 0.
 	local secs is 0.
-	local sign_str is " ".
+	local sign_str is "+".
 	
 	if t_local<0 {
 		set sign_str to "-". 
@@ -340,6 +387,10 @@ declare function sectotime {
 	}
 	
 	set sec_str to secs + "s" + space.
+	
+	if (secs < 10) {
+		set sec_str to "0" + sec_str.
+	}
 	
 	return sign_str + day_str + hour_str + min_str + sec_str.
 	
@@ -422,142 +473,6 @@ declare function sectotime_simple {
 	
 }
 
-//takes a timestamp and formats the date in gregorian calendar form
-//only works for RSS realistic calendar
-function format_calendar {
-	parameter time_.
-	
-	function get_month_list {
-		parameter year_no.
-		
-		local months is list(0).
-		
-		months:add(
-				lexicon(
-					"month", "January",
-					"length_d", 31
-			)
-		).
-		
-		local leap_year is (mod(year_no, 4)=0) and (mod(year_no, 100)=0) and (mod(year_no, 400)>0).
-		
-		if (leap_year) {
-			months:add(
-					lexicon(
-						"month", "February",
-						"length_d", 29
-				)
-			).
-		} else {
-			months:add(
-					lexicon(
-						"month", "February",
-						"length_d", 28
-				)
-			).
-		}
-		
-		months:add(
-				lexicon(
-					"month", "March",
-					"length_d", 31
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "April",
-					"length_d", 30
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "May",
-					"length_d", 31
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "June",
-					"length_d", 30
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "July",
-					"length_d", 31
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "August",
-					"length_d", 31
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "September",
-					"length_d", 30
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "October",
-					"length_d", 31
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "November",
-					"length_d", 30
-			)
-		).
-		
-		months:add(
-				lexicon(
-					"month", "December",
-					"length_d", 31
-			)
-		).
-	
-		return months.
-	}
-	
-	local calndr is time_:calendar.
-	
-	local year_ is 1950 + time_:year.
-	
-	local month_list is get_month_list(year_).
-	
-	local month_c is 1.
-	local month_str is "".
-	
-	local dayc is time_:day.
-	
-	until false {
-	
-		local month_ is month_list[month_c].
-	
-		if (dayc <= month_["length_d"]) {
-			set month_str to month_["month"].
-			break.
-		}
-	
-		set dayc to dayc - month_["length_d"].
-		set month_c to month_c + 1.
-	}
-	
-	return month_str + " " + dayc + " " + year_.
-
-}
-
 function random_int_range {
 	parameter range_.
 	return FLOOR(range_*RANDOM()).
@@ -580,6 +495,10 @@ FUNCTION fixed_list_factory {
 	this:add(
 			"list", LIST()
 	).
+	
+	this:add("list_deep_copy", {
+		return this:list:copy.
+	}).
 	
 	this:add(
 			"maxlength", len
@@ -653,18 +572,17 @@ FUNCTION average_value_factory {
 		
 		local avg is 0.
 		
-		local values is this:list:list.
-		local len is values:length.
+		local values_ is this:list:list_deep_copy().
+		local len is values_:length.
 		
 		if (len=0) {return 0.}
 		
-		for v in values {
+		for v in values_ {
 			set avg to avg + v.
 		}
 		
 		return avg/len.
-	}
-	).
+	}).
 	
 	this:add("latest_value", 0).
 
