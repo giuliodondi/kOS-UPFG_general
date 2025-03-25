@@ -661,14 +661,14 @@ FUNCTION getState {
 	
 	local stg IS get_stage().
 	
-	LOCAL x IS get_current_thrust_isp().
+	LOCAL engines_ IS get_current_thrust_isp().
 	
-	SET vehiclestate["thr_vec"] TO x[0].
+	SET vehiclestate["thr_vec"] TO engines_["thrvec"].
 	
 	vehiclestate["avg_thr"]:update(vehiclestate["thr_vec"]:MAG).
 	
 	LOCAL avg_thrust is vehiclestate["avg_thr"]:average().
-	LOCAL avg_isp is x[1].
+	LOCAL avg_isp is engines_["isp"].
 		
 	LOCAL m_old IS stg["m_initial"].
 
